@@ -4,6 +4,7 @@ import { NodeSpec, NodeType, Node as ProsemirrorNode } from "prosemirror-model";
 import * as React from "react";
 import { Trans } from "react-i18next";
 import { bytesToHumanReadable } from "../../utils/files";
+import { sanitizeUrl } from "../../utils/urls";
 import toggleWrap from "../commands/toggleWrap";
 import FileExtension from "../components/FileExtension";
 import Widget from "../components/Widget";
@@ -31,7 +32,9 @@ export default class Attachment extends Node {
           default: null,
         },
         title: {},
-        size: {},
+        size: {
+          default: 0,
+        },
       },
       group: "block",
       defining: true,
@@ -56,7 +59,7 @@ export default class Attachment extends Node {
           {
             class: `attachment`,
             id: node.attrs.id,
-            href: node.attrs.href,
+            href: sanitizeUrl(node.attrs.href),
             download: node.attrs.title,
             "data-size": node.attrs.size,
           },

@@ -10,10 +10,7 @@ export default async function revisionCreator({
   user: User;
   ip?: string;
 }) {
-  let transaction;
-
-  try {
-    transaction = await sequelize.transaction();
+  return sequelize.transaction(async (transaction) => {
     const revision = await Revision.createFromDocument(document, {
       transaction,
     });
@@ -21,6 +18,7 @@ export default async function revisionCreator({
       {
         name: "revisions.create",
         documentId: document.id,
+        collectionId: document.collectionId,
         modelId: revision.id,
         teamId: document.teamId,
         actorId: user.id,
@@ -31,13 +29,6 @@ export default async function revisionCreator({
         transaction,
       }
     );
-    await transaction.commit();
     return revision;
-  } catch (err) {
-    if (transaction) {
-      await transaction.rollback();
-    }
-
-    throw err;
-  }
+  });
 }

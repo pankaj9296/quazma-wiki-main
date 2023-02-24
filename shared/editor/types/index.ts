@@ -1,5 +1,6 @@
 import { Node as ProsemirrorNode } from "prosemirror-model";
 import { EditorState, Transaction } from "prosemirror-state";
+import { EditorView } from "prosemirror-view";
 import * as React from "react";
 import { DefaultTheme } from "styled-components";
 
@@ -15,7 +16,7 @@ export enum EventType {
 }
 
 export type MenuItem = {
-  icon?: typeof React.Component | React.FC<any>;
+  icon?: React.ReactElement;
   name?: string;
   title?: string;
   shortcut?: string;
@@ -27,14 +28,9 @@ export type MenuItem = {
   active?: (state: EditorState) => boolean;
 };
 
-export type EmbedDescriptor = MenuItem & {
-  icon: React.FC<any>;
-  matcher: (url: string) => boolean | [] | RegExpMatchArray;
-  component: typeof React.Component | React.FC<any>;
-};
-
 export type ComponentProps = {
   theme: DefaultTheme;
+  view: EditorView;
   node: ProsemirrorNode;
   isSelected: boolean;
   isEditable: boolean;

@@ -1,4 +1,6 @@
 import * as React from "react";
+import env from "@server/env";
+import { NotificationSetting } from "@server/models";
 import BaseEmail from "./BaseEmail";
 import Body from "./components/Body";
 import Button from "./components/Button";
@@ -10,8 +12,10 @@ import Heading from "./components/Heading";
 
 type Props = {
   to: string;
+  userId: string;
   id: string;
   teamUrl: string;
+  teamId: string;
 };
 
 /**
@@ -19,12 +23,24 @@ type Props = {
  * for download in the settings section.
  */
 export default class ExportSuccessEmail extends BaseEmail<Props> {
+  protected async beforeSend({ userId, teamId }: Props) {
+    const notificationSetting = await NotificationSetting.findOne({
+      where: {
+        userId,
+        teamId,
+        event: "emails.export_completed",
+      },
+    });
+
+    return notificationSetting !== null;
+  }
+
   protected subject() {
     return "Your requested export";
   }
 
   protected preview() {
-    return "Here's your request data export from Outline";
+    return `Here's your request data export from ${env.APP_NAME}`;
   }
 
   protected renderAsText() {

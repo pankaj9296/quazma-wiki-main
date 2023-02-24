@@ -2,17 +2,17 @@ import fs from "fs";
 import path from "path";
 import { FileOperation } from "@server/models";
 import { buildFileOperation } from "@server/test/factories";
-import { flushdb } from "@server/test/support";
+import { setupTestDatabase } from "@server/test/support";
 import ImportMarkdownZipTask from "./ImportMarkdownZipTask";
 
-beforeEach(() => flushdb());
+setupTestDatabase();
 
 describe("ImportMarkdownZipTask", () => {
   it("should import the documents, attachments", async () => {
     const fileOperation = await buildFileOperation();
-    Object.defineProperty(fileOperation, "buffer", {
+    Object.defineProperty(fileOperation, "stream", {
       get() {
-        return fs.readFileSync(
+        return fs.createReadStream(
           path.resolve(__dirname, "..", "..", "test", "fixtures", "outline.zip")
         );
       },
@@ -33,9 +33,9 @@ describe("ImportMarkdownZipTask", () => {
 
   it("should throw an error with corrupt zip", async () => {
     const fileOperation = await buildFileOperation();
-    Object.defineProperty(fileOperation, "buffer", {
+    Object.defineProperty(fileOperation, "stream", {
       get() {
-        return fs.readFileSync(
+        return fs.createReadStream(
           path.resolve(__dirname, "..", "..", "test", "fixtures", "corrupt.zip")
         );
       },
@@ -59,9 +59,9 @@ describe("ImportMarkdownZipTask", () => {
 
   it("should throw an error with empty collection in zip", async () => {
     const fileOperation = await buildFileOperation();
-    Object.defineProperty(fileOperation, "buffer", {
+    Object.defineProperty(fileOperation, "stream", {
       get() {
-        return fs.readFileSync(
+        return fs.createReadStream(
           path.resolve(__dirname, "..", "..", "test", "fixtures", "empty.zip")
         );
       },

@@ -16,16 +16,20 @@ import { EditorState, Selection, Plugin, Transaction } from "prosemirror-state";
 import { Decoration, EditorView } from "prosemirror-view";
 import * as React from "react";
 import { DefaultTheme, ThemeProps } from "styled-components";
+import EditorContainer from "@shared/editor/components/Styles";
+import { EmbedDescriptor } from "@shared/editor/embeds";
 import Extension, { CommandFactory } from "@shared/editor/lib/Extension";
 import ExtensionManager from "@shared/editor/lib/ExtensionManager";
 import getHeadings from "@shared/editor/lib/getHeadings";
 import getTasks from "@shared/editor/lib/getTasks";
 import { MarkdownSerializer } from "@shared/editor/lib/markdown/serializer";
+import textBetween from "@shared/editor/lib/textBetween";
 import Mark from "@shared/editor/marks/Mark";
 import Node from "@shared/editor/nodes/Node";
 import ReactNode from "@shared/editor/nodes/ReactNode";
 import fullExtensionsPackage from "@shared/editor/packages/full";
-import { EmbedDescriptor, EventType } from "@shared/editor/types";
+import { EventType } from "@shared/editor/types";
+import { UserPreferences } from "@shared/types";
 import EventEmitter from "@shared/utils/events";
 import Flex from "~/components/Flex";
 import { Dictionary } from "~/hooks/useDictionary";
@@ -37,7 +41,6 @@ import EmojiMenu from "./components/EmojiMenu";
 import { SearchResult } from "./components/LinkEditor";
 import LinkToolbar from "./components/LinkToolbar";
 import SelectionToolbar from "./components/SelectionToolbar";
-import EditorContainer from "./components/Styles";
 import WithTheme from "./components/WithTheme";
 
 export { default as Extension } from "@shared/editor/lib/Extension";
@@ -97,18 +100,19 @@ export type Props = {
     event: MouseEvent | React.MouseEvent<HTMLButtonElement>
   ) => void;
   /** Callback when user hovers on any link in the document */
-  onHoverLink?: (event: MouseEvent) => boolean;
-  /** Callback when user clicks on any hashtag in the document */
-  onClickHashtag?: (tag: string, event: MouseEvent) => void;
+  onHoverLink?: (element: HTMLAnchorElement) => boolean;
   /** Callback when user presses any key with document focused */
   onKeyDown?: (event: React.KeyboardEvent<HTMLDivElement>) => void;
   /** Collection of embed types to render in the document */
   embeds: EmbedDescriptor[];
+  /** Display preferences for the logged in user, if any. */
+  userPreferences?: UserPreferences | null;
   /** Whether embeds should be rendered without an iframe */
   embedsDisabled?: boolean;
   /** Callback when a toast message is triggered (eg "link copied") */
   onShowToast: (message: string) => void;
   className?: string;
+  /** Optional style overrides */
   style?: React.CSSProperties;
 };
 
@@ -206,6 +210,7 @@ export class Editor extends React.PureComponent<
    */
   public componentDidMount() {
     this.init();
+    window.addEventListener("theme-changed", this.dispatchThemeChanged);
 
     if (this.props.scrollTo) {
       this.scrollToAnchor(this.props.scrollTo);
@@ -272,6 +277,10 @@ export class Editor extends React.PureComponent<
       this.isBlurred = false;
       this.props.onFocus?.();
     }
+  }
+
+  public componentWillUnmount(): void {
+    window.removeEventListener("theme-changed", this.dispatchThemeChanged);
   }
 
   private init() {
@@ -394,7 +403,9 @@ export class Editor extends React.PureComponent<
       plugins: [
         ...this.plugins,
         ...this.keymaps,
-        dropCursor({ color: this.props.theme.cursor }),
+        dropCursor({
+          color: this.props.theme.cursor,
+        }),
         gapCursor(),
         inputRules({
           rules: this.inputRules,
@@ -430,7 +441,7 @@ export class Editor extends React.PureComponent<
       state: this.createState(this.props.value),
       editable: () => !this.props.readOnly,
       nodeViews: this.nodeViews,
-      dispatchTransaction: function (transaction) {
+      dispatchTransaction(transaction) {
         // callback is bound to have the view instance as its this binding
         const { state, transactions } = this.state.applyTransaction(
           transaction
@@ -463,6 +474,10 @@ export class Editor extends React.PureComponent<
 
     return view;
   }
+
+  private dispatchThemeChanged = (event: CustomEvent) => {
+    this.view.dispatch(this.view.state.tr.setMeta("theme", event.detail));
+  };
 
   public scrollToAnchor(hash: string) {
     if (!hash) {
@@ -554,13 +569,23 @@ export class Editor extends React.PureComponent<
     this.setState({ blockMenuOpen: true, blockMenuSearch: search });
   };
 
-  private handleCloseBlockMenu = () => {
+  private handleCloseBlockMenu = (insertNewLine?: boolean) => {
+    if (insertNewLine) {
+      const transaction = this.view.state.tr.split(
+        this.view.state.selection.to
+      );
+      this.view.dispatch(transaction);
+      this.view.focus();
+    }
     if (!this.state.blockMenuOpen) {
       return;
     }
     this.setState({ blockMenuOpen: false });
   };
 
+  /**
+   * Focus the editor at the start of the content.
+   */
   public focusAtStart = () => {
     const selection = Selection.atStart(this.view.state.doc);
     const transaction = this.view.state.tr.setSelection(selection);
@@ -568,6 +593,9 @@ export class Editor extends React.PureComponent<
     this.view.focus();
   };
 
+  /**
+   * Focus the editor at the end of the content.
+   */
   public focusAtEnd = () => {
     const selection = Selection.atEnd(this.view.state.doc);
     const transaction = this.view.state.tr.setSelection(selection);
@@ -575,12 +603,38 @@ export class Editor extends React.PureComponent<
     this.view.focus();
   };
 
+  /**
+   * Return the headings in the current editor.
+   *
+   * @returns A list of headings in the document
+   */
   public getHeadings = () => {
     return getHeadings(this.view.state.doc);
   };
 
+  /**
+   * Return the tasks/checkmarks in the current editor.
+   *
+   * @returns A list of tasks in the document
+   */
   public getTasks = () => {
     return getTasks(this.view.state.doc);
+  };
+
+  /**
+   * Return the plain text content of the current editor.
+   *
+   * @returns A string of text
+   */
+  public getPlainText = () => {
+    const { doc } = this.view.state;
+    const textSerializers = Object.fromEntries(
+      Object.entries(this.schema.nodes)
+        .filter(([, node]) => node.spec.toPlainText)
+        .map(([name, node]) => [name, node.spec.toPlainText])
+    );
+
+    return textBetween(doc, 0, doc.content.size, textSerializers);
   };
 
   public render() {
@@ -631,13 +685,10 @@ export class Editor extends React.PureComponent<
                 onShowToast={this.props.onShowToast}
               />
               <LinkToolbar
-                view={this.view}
-                dictionary={dictionary}
                 isActive={this.state.linkMenuOpen}
                 onCreateLink={this.props.onCreateLink}
                 onSearchLink={this.props.onSearchLink}
                 onClickLink={this.props.onClickLink}
-                onShowToast={this.props.onShowToast}
                 onClose={this.handleCloseLinkMenu}
               />
               <EmojiMenu

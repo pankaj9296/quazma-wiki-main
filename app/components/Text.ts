@@ -1,8 +1,9 @@
 import styled from "styled-components";
 
 type Props = {
-  type?: "secondary" | "tertiary";
+  type?: "secondary" | "tertiary" | "danger";
   size?: "large" | "small" | "xsmall";
+  weight?: "bold" | "normal";
 };
 
 /**
@@ -16,6 +17,8 @@ const Text = styled.p<Props>`
       ? props.theme.textSecondary
       : props.type === "tertiary"
       ? props.theme.textTertiary
+      : props.type === "danger"
+      ? props.theme.brand.red
       : props.theme.text};
   font-size: ${(props) =>
     props.size === "large"
@@ -24,6 +27,12 @@ const Text = styled.p<Props>`
       ? "14px"
       : props.size === "xsmall"
       ? "13px"
+      : "inherit"};
+  font-weight: ${(props) =>
+    props.weight === "bold"
+      ? "bold"
+      : props.weight === "normal"
+      ? "normal"
       : "inherit"};
   white-space: normal;
   user-select: none;

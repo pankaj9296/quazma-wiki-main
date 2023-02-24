@@ -7,6 +7,7 @@ import Flex from "~/components/Flex";
 import { LoadingIndicatorBar } from "~/components/LoadingIndicator";
 import SkipNavContent from "~/components/SkipNavContent";
 import SkipNavLink from "~/components/SkipNavLink";
+import env from "~/env";
 import useKeyDown from "~/hooks/useKeyDown";
 import { MenuProvider } from "~/hooks/useMenuContext";
 import useStores from "~/hooks/useStores";
@@ -15,12 +16,17 @@ import { isModKey } from "~/utils/keyboard";
 type Props = {
   title?: string;
   sidebar?: React.ReactNode;
-  rightRail?: React.ReactNode;
+  sidebarRight?: React.ReactNode;
 };
 
-const Layout: React.FC<Props> = ({ title, children, sidebar, rightRail }) => {
+const Layout: React.FC<Props> = ({
+  title,
+  children,
+  sidebar,
+  sidebarRight,
+}) => {
   const { ui } = useStores();
-  const sidebarCollapsed = !sidebar || ui.isEditing || ui.sidebarCollapsed;
+  const sidebarCollapsed = !sidebar || ui.sidebarIsClosed;
 
   useKeyDown(".", (event) => {
     if (isModKey(event)) {
@@ -31,7 +37,7 @@ const Layout: React.FC<Props> = ({ title, children, sidebar, rightRail }) => {
   return (
     <Container column auto>
       <Helmet>
-        <title>{title ? title : "Outline"}</title>
+        <title>{title ? title : env.APP_NAME}</title>
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
       </Helmet>
 
@@ -60,7 +66,7 @@ const Layout: React.FC<Props> = ({ title, children, sidebar, rightRail }) => {
           {children}
         </Content>
 
-        {rightRail}
+        {sidebarRight}
       </Container>
     </Container>
   );

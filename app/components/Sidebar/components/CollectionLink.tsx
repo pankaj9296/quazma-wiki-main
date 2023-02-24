@@ -5,11 +5,12 @@ import * as React from "react";
 import { useDrop } from "react-dnd";
 import { useTranslation } from "react-i18next";
 import { useHistory } from "react-router-dom";
+import { NavigationNode } from "@shared/types";
 import Collection from "~/models/Collection";
 import Document from "~/models/Document";
 import DocumentReparent from "~/scenes/DocumentReparent";
-import CollectionIcon from "~/components/CollectionIcon";
 import Fade from "~/components/Fade";
+import CollectionIcon from "~/components/Icons/CollectionIcon";
 import NudeButton from "~/components/NudeButton";
 import { createDocument } from "~/actions/definitions/documents";
 import useActionContext from "~/hooks/useActionContext";
@@ -17,7 +18,6 @@ import useBoolean from "~/hooks/useBoolean";
 import usePolicy from "~/hooks/usePolicy";
 import useStores from "~/hooks/useStores";
 import CollectionMenu from "~/menus/CollectionMenu";
-import { NavigationNode } from "~/types";
 import DropToImport from "./DropToImport";
 import EditableTitle from "./EditableTitle";
 import Relative from "./Relative";
@@ -27,7 +27,7 @@ import { useStarredContext } from "./StarredContext";
 type Props = {
   collection: Collection;
   expanded?: boolean;
-  onDisclosureClick: (ev: React.MouseEvent<HTMLButtonElement>) => void;
+  onDisclosureClick: (ev?: React.MouseEvent<HTMLButtonElement>) => void;
   activeDocument: Document | undefined;
   isDraggingAnyCollection?: boolean;
 };
@@ -44,7 +44,7 @@ const CollectionLink: React.FC<Props> = ({
   const { dialogs, documents, collections } = useStores();
   const [menuOpen, handleMenuOpen, handleMenuClose] = useBoolean();
   const [isEditing, setIsEditing] = React.useState(false);
-  const canUpdate = usePolicy(collection.id).update;
+  const canUpdate = usePolicy(collection).update;
   const { t } = useTranslation();
   const history = useHistory();
   const inStarredSection = useStarredContext();
@@ -62,7 +62,7 @@ const CollectionLink: React.FC<Props> = ({
   // Drop to re-parent document
   const [{ isOver, canDrop }, drop] = useDrop({
     accept: "document",
-    drop: (item: DragObject, monitor) => {
+    drop: async (item: DragObject, monitor) => {
       const { id, collectionId } = item;
       if (monitor.didDrop()) {
         return;
@@ -81,7 +81,8 @@ const CollectionLink: React.FC<Props> = ({
       if (
         prevCollection &&
         prevCollection.permission === null &&
-        prevCollection.permission !== collection.permission
+        prevCollection.permission !== collection.permission &&
+        !document?.isDraft
       ) {
         itemRef.current = item;
 
@@ -97,7 +98,11 @@ const CollectionLink: React.FC<Props> = ({
           ),
         });
       } else {
-        documents.move(id, collection.id);
+        await documents.move(id, collection.id);
+
+        if (!expanded) {
+          onDisclosureClick();
+        }
       }
     },
     canDrop: () => canUpdate,

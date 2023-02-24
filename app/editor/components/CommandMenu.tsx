@@ -7,12 +7,13 @@ import { Portal } from "react-portal";
 import { VisuallyHidden } from "reakit/VisuallyHidden";
 import styled from "styled-components";
 import insertFiles from "@shared/editor/commands/insertFiles";
+import { EmbedDescriptor } from "@shared/editor/embeds";
 import { CommandFactory } from "@shared/editor/lib/Extension";
 import filterExcessSeparators from "@shared/editor/lib/filterExcessSeparators";
-import { EmbedDescriptor, MenuItem } from "@shared/editor/types";
+import { MenuItem } from "@shared/editor/types";
 import { depths } from "@shared/styles";
-import { supportedImageMimeTypes } from "@shared/utils/files";
-import getDataTransferFiles from "@shared/utils/getDataTransferFiles";
+import { getEventFiles } from "@shared/utils/files";
+import { AttachmentValidation } from "@shared/validations";
 import Scrollable from "~/components/Scrollable";
 import { Dictionary } from "~/hooks/useDictionary";
 import Input from "./Input";
@@ -36,7 +37,7 @@ export type Props<T extends MenuItem = MenuItem> = {
   onFileUploadStop?: () => void;
   onShowToast: (message: string) => void;
   onLinkToolbarOpen?: () => void;
-  onClose: () => void;
+  onClose: (insertNewLine?: boolean) => void;
   onClearSearch: () => void;
   embeds?: EmbedDescriptor[];
   renderMenuItem: (
@@ -61,7 +62,7 @@ type State = {
   selectedIndex: number;
 };
 
-class CommandMenu<T = MenuItem> extends React.Component<Props<T>, State> {
+class CommandMenu<T extends MenuItem> extends React.Component<Props<T>, State> {
   menuRef = React.createRef<HTMLDivElement>();
   inputRef = React.createRef<HTMLInputElement>();
 
@@ -75,10 +76,11 @@ class CommandMenu<T = MenuItem> extends React.Component<Props<T>, State> {
   };
 
   componentDidMount() {
+    window.addEventListener("mousedown", this.handleMouseDown);
     window.addEventListener("keydown", this.handleKeyDown);
   }
 
-  shouldComponentUpdate(nextProps: Props, nextState: State) {
+  shouldComponentUpdate(nextProps: Props<T>, nextState: State) {
     return (
       nextProps.search !== this.props.search ||
       nextProps.isActive !== this.props.isActive ||
@@ -86,7 +88,7 @@ class CommandMenu<T = MenuItem> extends React.Component<Props<T>, State> {
     );
   }
 
-  componentDidUpdate(prevProps: Props) {
+  componentDidUpdate(prevProps: Props<T>) {
     if (!prevProps.isActive && this.props.isActive) {
       // reset scroll position to top when opening menu as the contents are
       // hidden, not unrendered
@@ -106,8 +108,20 @@ class CommandMenu<T = MenuItem> extends React.Component<Props<T>, State> {
   }
 
   componentWillUnmount() {
+    window.removeEventListener("mousedown", this.handleMouseDown);
     window.removeEventListener("keydown", this.handleKeyDown);
   }
+
+  handleMouseDown = (event: MouseEvent) => {
+    if (
+      !this.menuRef.current ||
+      this.menuRef.current.contains(event.target as Element)
+    ) {
+      return;
+    }
+
+    this.props.onClose();
+  };
 
   handleKeyDown = (event: KeyboardEvent) => {
     if (!this.props.isActive) {
@@ -123,7 +137,7 @@ class CommandMenu<T = MenuItem> extends React.Component<Props<T>, State> {
       if (item) {
         this.insertItem(item);
       } else {
-        this.props.onClose();
+        this.props.onClose(true);
       }
     }
 
@@ -182,7 +196,9 @@ class CommandMenu<T = MenuItem> extends React.Component<Props<T>, State> {
   insertItem = (item: any) => {
     switch (item.name) {
       case "image":
-        return this.triggerFilePick(supportedImageMimeTypes.join(", "));
+        return this.triggerFilePick(
+          AttachmentValidation.imageContentTypes.join(", ")
+        );
       case "attachment":
         return this.triggerFilePick("*");
       case "embed":
@@ -275,7 +291,7 @@ class CommandMenu<T = MenuItem> extends React.Component<Props<T>, State> {
   };
 
   handleFilePicked = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const files = getDataTransferFiles(event);
+    const files = getEventFiles(event);
 
     const {
       view,
@@ -424,11 +440,13 @@ class CommandMenu<T = MenuItem> extends React.Component<Props<T>, State> {
     const embedItems: EmbedDescriptor[] = [];
 
     for (const embed of embeds) {
-      if (embed.title && embed.icon) {
-        embedItems.push({
-          ...embed,
-          name: "embed",
-        });
+      if (embed.title && embed.visible !== false) {
+        embedItems.push(
+          new EmbedDescriptor({
+            ...embed,
+            name: "embed",
+          })
+        );
       }
     }
 
@@ -570,7 +588,7 @@ const LinkInputWrapper = styled.div`
 `;
 
 const LinkInput = styled(Input)`
-  height: 36px;
+  height: 32px;
   width: 100%;
   color: ${(props) => props.theme.textSecondary};
 `;
@@ -579,7 +597,7 @@ const List = styled.ol`
   list-style: none;
   text-align: left;
   height: 100%;
-  padding: 8px 0;
+  padding: 6px;
   margin: 0;
 `;
 
@@ -594,7 +612,7 @@ const Empty = styled.div`
   color: ${(props) => props.theme.textSecondary};
   font-weight: 500;
   font-size: 14px;
-  height: 36px;
+  height: 32px;
   padding: 0 16px;
 `;
 
@@ -625,7 +643,7 @@ export const Wrapper = styled(Scrollable)<{
   box-sizing: border-box;
   pointer-events: none;
   white-space: nowrap;
-  width: 300px;
+  width: 280px;
   height: auto;
   max-height: 324px;
 

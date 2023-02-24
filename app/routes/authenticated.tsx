@@ -1,3 +1,4 @@
+import { observer } from "mobx-react";
 import * as React from "react";
 import { Switch, Redirect, RouteComponentProps } from "react-router-dom";
 import Archive from "~/scenes/Archive";
@@ -6,48 +7,20 @@ import Drafts from "~/scenes/Drafts";
 import Error404 from "~/scenes/Error404";
 import Templates from "~/scenes/Templates";
 import Trash from "~/scenes/Trash";
-import Layout from "~/components/AuthenticatedLayout";
+import AuthenticatedLayout from "~/components/AuthenticatedLayout";
 import CenteredContent from "~/components/CenteredContent";
 import PlaceholderDocument from "~/components/PlaceholderDocument";
 import Route from "~/components/ProfiledRoute";
-import SocketProvider from "~/components/SocketProvider";
+import WebsocketProvider from "~/components/WebsocketProvider";
+import useCurrentTeam from "~/hooks/useCurrentTeam";
+import usePolicy from "~/hooks/usePolicy";
 import { matchDocumentSlug as slug } from "~/utils/routeHelpers";
 
-const SettingsRoutes = React.lazy(
-  () =>
-    import(
-      /* webpackChunkName: "settings" */
-      "./settings"
-    )
-);
-const Document = React.lazy(
-  () =>
-    import(
-      /* webpackChunkName: "document" */
-      "~/scenes/Document"
-    )
-);
-const Collection = React.lazy(
-  () =>
-    import(
-      /* webpackChunkName: "collection" */
-      "~/scenes/Collection"
-    )
-);
-const Home = React.lazy(
-  () =>
-    import(
-      /* webpackChunkName: "home" */
-      "~/scenes/Home"
-    )
-);
-const Search = React.lazy(
-  () =>
-    import(
-      /* webpackChunkName: "search" */
-      "~/scenes/Search"
-    )
-);
+const SettingsRoutes = React.lazy(() => import("./settings"));
+const Document = React.lazy(() => import("~/scenes/Document"));
+const Collection = React.lazy(() => import("~/scenes/Collection"));
+const Home = React.lazy(() => import("~/scenes/Home"));
+const Search = React.lazy(() => import("~/scenes/Search"));
 
 const RedirectDocument = ({
   match,
@@ -59,10 +32,13 @@ const RedirectDocument = ({
   />
 );
 
-export default function AuthenticatedRoutes() {
+function AuthenticatedRoutes() {
+  const team = useCurrentTeam();
+  const can = usePolicy(team);
+
   return (
-    <SocketProvider>
-      <Layout>
+    <WebsocketProvider>
+      <AuthenticatedLayout>
         <React.Suspense
           fallback={
             <CenteredContent>
@@ -71,25 +47,37 @@ export default function AuthenticatedRoutes() {
           }
         >
           <Switch>
+            {can.createDocument && (
+              <Route exact path="/templates" component={Templates} />
+            )}
+            {can.createDocument && (
+              <Route exact path="/templates/:sort" component={Templates} />
+            )}
+            {can.createDocument && (
+              <Route exact path="/drafts" component={Drafts} />
+            )}
+            {can.createDocument && (
+              <Route exact path="/archive" component={Archive} />
+            )}
+            {can.createDocument && (
+              <Route exact path="/trash" component={Trash} />
+            )}
             <Redirect from="/dashboard" to="/home" />
             <Route path="/home/:tab" component={Home} />
             <Route path="/home" component={Home} />
-            <Route exact path="/templates" component={Templates} />
-            <Route exact path="/templates/:sort" component={Templates} />
-            <Route exact path="/drafts" component={Drafts} />
-            <Route exact path="/archive" component={Archive} />
-            <Route exact path="/trash" component={Trash} />
             <Redirect exact from="/starred" to="/home" />
             <Redirect exact from="/collections/*" to="/collection/*" />
             <Route exact path="/collection/:id/new" component={DocumentNew} />
             <Route exact path="/collection/:id/:tab" component={Collection} />
             <Route exact path="/collection/:id" component={Collection} />
+            <Route exact path="/doc/new" component={DocumentNew} />
             <Route exact path={`/d/${slug}`} component={RedirectDocument} />
             <Route
               exact
               path={`/doc/${slug}/history/:revisionId?`}
               component={Document}
             />
+            <Route exact path={`/doc/${slug}/insights`} component={Document} />
             <Route exact path={`/doc/${slug}/edit`} component={Document} />
             <Route path={`/doc/${slug}`} component={Document} />
             <Route exact path="/search" component={Search} />
@@ -99,7 +87,9 @@ export default function AuthenticatedRoutes() {
             <Route component={Error404} />
           </Switch>
         </React.Suspense>
-      </Layout>
-    </SocketProvider>
+      </AuthenticatedLayout>
+    </WebsocketProvider>
   );
 }
+
+export default observer(AuthenticatedRoutes);

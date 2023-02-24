@@ -1,6 +1,7 @@
 import {
   CollectionIcon,
   EditIcon,
+  PadlockIcon,
   PlusIcon,
   StarredIcon,
   UnstarredIcon,
@@ -10,7 +11,8 @@ import stores from "~/stores";
 import Collection from "~/models/Collection";
 import CollectionEdit from "~/scenes/CollectionEdit";
 import CollectionNew from "~/scenes/CollectionNew";
-import DynamicCollectionIcon from "~/components/CollectionIcon";
+import CollectionPermissions from "~/scenes/CollectionPermissions";
+import DynamicCollectionIcon from "~/components/Icons/CollectionIcon";
 import { createAction } from "~/actions";
 import { CollectionSection } from "~/actions/sections";
 import history from "~/utils/history";
@@ -21,6 +23,7 @@ const ColorCollectionIcon = ({ collection }: { collection: Collection }) => {
 
 export const openCollection = createAction({
   name: ({ t }) => t("Open collection"),
+  analyticsName: "Open collection",
   section: CollectionSection,
   shortcut: ["o", "c"],
   icon: <CollectionIcon />,
@@ -40,6 +43,7 @@ export const openCollection = createAction({
 
 export const createCollection = createAction({
   name: ({ t }) => t("New collection"),
+  analyticsName: "New collection",
   section: CollectionSection,
   icon: <PlusIcon />,
   keywords: "create",
@@ -56,7 +60,9 @@ export const createCollection = createAction({
 });
 
 export const editCollection = createAction({
-  name: ({ t }) => t("Edit collection"),
+  name: ({ t, isContextMenu }) =>
+    isContextMenu ? `${t("Edit")}…` : t("Edit collection"),
+  analyticsName: "Edit collection",
   section: CollectionSection,
   icon: <EditIcon />,
   visible: ({ stores, activeCollectionId }) =>
@@ -79,8 +85,30 @@ export const editCollection = createAction({
   },
 });
 
+export const editCollectionPermissions = createAction({
+  name: ({ t, isContextMenu }) =>
+    isContextMenu ? `${t("Permissions")}…` : t("Collection permissions"),
+  analyticsName: "Collection permissions",
+  section: CollectionSection,
+  icon: <PadlockIcon />,
+  visible: ({ stores, activeCollectionId }) =>
+    !!activeCollectionId &&
+    stores.policies.abilities(activeCollectionId).update,
+  perform: ({ t, activeCollectionId }) => {
+    if (!activeCollectionId) {
+      return;
+    }
+
+    stores.dialogs.openModal({
+      title: t("Collection permissions"),
+      content: <CollectionPermissions collectionId={activeCollectionId} />,
+    });
+  },
+});
+
 export const starCollection = createAction({
   name: ({ t }) => t("Star"),
+  analyticsName: "Star collection",
   section: CollectionSection,
   icon: <StarredIcon />,
   keywords: "favorite bookmark",
@@ -106,6 +134,7 @@ export const starCollection = createAction({
 
 export const unstarCollection = createAction({
   name: ({ t }) => t("Unstar"),
+  analyticsName: "Unstar collection",
   section: CollectionSection,
   icon: <UnstarredIcon />,
   keywords: "unfavorite unbookmark",

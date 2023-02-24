@@ -9,8 +9,10 @@ import {
   IsUUID,
   Table,
   DataType,
+  Length,
 } from "sequelize-typescript";
 import { globalEventQueue } from "../queues";
+import { Event as TEvent } from "../types";
 import Collection from "./Collection";
 import Document from "./Document";
 import Team from "./Team";
@@ -18,13 +20,17 @@ import User from "./User";
 import IdModel from "./base/IdModel";
 import Fix from "./decorators/Fix";
 
-@Table({ tableName: "events", modelName: "event" })
+@Table({ tableName: "events", modelName: "event", updatedAt: false })
 @Fix
 class Event extends IdModel {
   @IsUUID(4)
   @Column(DataType.UUID)
-  modelId: string;
+  modelId: string | null;
 
+  @Length({
+    max: 255,
+    msg: "name must be 255 characters or less",
+  })
   @Column
   name: string;
 
@@ -33,7 +39,7 @@ class Event extends IdModel {
   ip: string | null;
 
   @Column(DataType.JSONB)
-  data: Record<string, any>;
+  data: Record<string, any> | null;
 
   // hooks
 
@@ -57,18 +63,18 @@ class Event extends IdModel {
   // associations
 
   @BelongsTo(() => User, "userId")
-  user: User;
+  user: User | null;
 
   @ForeignKey(() => User)
   @Column(DataType.UUID)
-  userId: string;
+  userId: string | null;
 
   @BelongsTo(() => Document, "documentId")
-  document: Document;
+  document: Document | null;
 
   @ForeignKey(() => Document)
   @Column(DataType.UUID)
-  documentId: string;
+  documentId: string | null;
 
   @BelongsTo(() => User, "actorId")
   actor: User;
@@ -78,11 +84,11 @@ class Event extends IdModel {
   actorId: string;
 
   @BelongsTo(() => Collection, "collectionId")
-  collection: Collection;
+  collection: Collection | null;
 
   @ForeignKey(() => Collection)
   @Column(DataType.UUID)
-  collectionId: string;
+  collectionId: string | null;
 
   @BelongsTo(() => Team, "teamId")
   team: Team;
@@ -97,16 +103,15 @@ class Event extends IdModel {
    */
   static schedule(event: Partial<Event>) {
     const now = new Date();
-    globalEventQueue.add(
+    return globalEventQueue.add(
       this.build({
         createdAt: now,
-        updatedAt: now,
         ...event,
       })
     );
   }
 
-  static ACTIVITY_EVENTS = [
+  static ACTIVITY_EVENTS: TEvent["name"][] = [
     "collections.create",
     "collections.delete",
     "collections.move",
@@ -123,7 +128,7 @@ class Event extends IdModel {
     "users.create",
   ];
 
-  static AUDIT_EVENTS = [
+  static AUDIT_EVENTS: TEvent["name"][] = [
     "api_keys.create",
     "api_keys.delete",
     "authenticationProviders.update",
@@ -136,7 +141,6 @@ class Event extends IdModel {
     "collections.add_group",
     "collections.remove_group",
     "collections.delete",
-    "collections.export_all",
     "documents.create",
     "documents.publish",
     "documents.update",
@@ -167,6 +171,10 @@ class Event extends IdModel {
     "users.suspend",
     "users.activate",
     "users.delete",
+    "fileOperations.create",
+    "fileOperations.delete",
+    "webhookSubscriptions.create",
+    "webhookSubscriptions.delete",
   ];
 }
 

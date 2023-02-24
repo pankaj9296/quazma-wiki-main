@@ -8,6 +8,7 @@ export function initSentry(history: History) {
     dsn: env.SENTRY_DSN,
     environment: env.ENVIRONMENT,
     release: env.RELEASE,
+    tunnel: env.SENTRY_TUNNEL,
     integrations: [
       new Integrations.BrowserTracing({
         routingInstrumentation: Sentry.reactRouterV5Instrumentation(history),
@@ -15,6 +16,7 @@ export function initSentry(history: History) {
     ],
     tracesSampleRate: env.ENVIRONMENT === "production" ? 0.1 : 1,
     ignoreErrors: [
+      "Failed to fetch dynamically imported module",
       "ResizeObserver loop completed with undelivered notifications",
       "ResizeObserver loop limit exceeded",
       "AuthorizationError",
@@ -22,10 +24,11 @@ export function initSentry(history: History) {
       "NetworkError",
       "NotFoundError",
       "OfflineError",
+      "RateLimitExceededError",
       "ServiceUnavailableError",
       "UpdateRequiredError",
-      "ChunkLoadError",
       "file://",
+      "chrome-extension://",
     ],
   });
 }

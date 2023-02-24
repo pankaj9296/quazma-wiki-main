@@ -1,4 +1,4 @@
-import { flattenDeep } from "lodash";
+import { flattenDeep, padStart } from "lodash";
 import { Node } from "prosemirror-model";
 import { Plugin, PluginKey, Transaction } from "prosemirror-state";
 import { findBlockNodes } from "prosemirror-utils";
@@ -11,22 +11,38 @@ export const LANGUAGES = {
   css: "CSS",
   clike: "C",
   csharp: "C#",
+  elixir: "Elixir",
+  erlang: "Erlang",
   go: "Go",
+  graphql: "GraphQL",
+  groovy: "Groovy",
+  haskell: "Haskell",
   markup: "HTML",
-  objectivec: "Objective-C",
+  ini: "INI",
   java: "Java",
   javascript: "JavaScript",
   json: "JSON",
+  kotlin: "Kotlin",
+  lisp: "Lisp",
+  lua: "Lua",
+  mermaidjs: "Mermaid Diagram",
+  objectivec: "Objective-C",
+  ocaml: "OCaml",
   perl: "Perl",
   php: "PHP",
   powershell: "Powershell",
   python: "Python",
   ruby: "Ruby",
   rust: "Rust",
+  scala: "Scala",
   sql: "SQL",
   solidity: "Solidity",
+  swift: "Swift",
+  toml: "TOML",
   typescript: "TypeScript",
+  vb: "Visual Basic",
   yaml: "YAML",
+  zig: "Zig",
 };
 
 type ParsedNode = {
@@ -36,7 +52,18 @@ type ParsedNode = {
 
 const cache: Record<number, { node: Node; decorations: Decoration[] }> = {};
 
-function getDecorations({ doc, name }: { doc: Node; name: string }) {
+function getDecorations({
+  doc,
+  name,
+  lineNumbers,
+}: {
+  /** The prosemirror document to operate on. */
+  doc: Node;
+  /** The node name. */
+  name: string;
+  /** Whether to include decorations representing line numbers */
+  lineNumbers?: boolean;
+}) {
   const decorations: Decoration[] = [];
   const blocks: { node: Node; pos: number }[] = findBlockNodes(doc).filter(
     (item) => item.node.type.name === name
@@ -66,9 +93,36 @@ function getDecorations({ doc, name }: { doc: Node; name: string }) {
       return;
     }
 
+    const lineDecorations = [];
+
     if (!cache[block.pos] || !cache[block.pos].node.eq(block.node)) {
+      if (lineNumbers) {
+        const lineCount =
+          (block.node.textContent.match(/\n/g) || []).length + 1;
+        const gutterWidth = String(lineCount).length;
+
+        const lineCountText = new Array(lineCount)
+          .fill(0)
+          .map((_, i) => padStart(`${i + 1}`, gutterWidth, " "))
+          .join(" ");
+
+        lineDecorations.push(
+          Decoration.node(
+            block.pos,
+            block.pos + block.node.nodeSize,
+            {
+              "data-line-numbers": `${lineCountText} `,
+              style: `--line-number-gutter-width: ${gutterWidth};`,
+            },
+            {
+              key: `line-${lineCount}-gutter`,
+            }
+          )
+        );
+      }
+
       const nodes = refractor.highlight(block.node.textContent, language);
-      const _decorations = flattenDeep(parseNodes(nodes))
+      const newDecorations = flattenDeep(parseNodes(nodes))
         .map((node: ParsedNode) => {
           const from = startPos;
           const to = from + node.text.length;
@@ -86,13 +140,15 @@ function getDecorations({ doc, name }: { doc: Node; name: string }) {
           Decoration.inline(node.from, node.to, {
             class: node.classes.join(" "),
           })
-        );
+        )
+        .concat(lineDecorations);
 
       cache[block.pos] = {
         node: block.node,
-        decorations: _decorations,
+        decorations: newDecorations,
       };
     }
+
     cache[block.pos].decorations.forEach((decoration) => {
       decorations.push(decoration);
     });
@@ -107,7 +163,15 @@ function getDecorations({ doc, name }: { doc: Node; name: string }) {
   return DecorationSet.create(doc, decorations);
 }
 
-export default function Prism({ name }: { name: string }) {
+export default function Prism({
+  name,
+  lineNumbers,
+}: {
+  /** The node name. */
+  name: string;
+  /** Whether to include decorations representing line numbers */
+  lineNumbers?: boolean;
+}) {
   let highlighted = false;
 
   return new Plugin({
@@ -125,7 +189,7 @@ export default function Prism({ name }: { name: string }) {
 
         if (!highlighted || codeBlockChanged || ySyncEdit) {
           highlighted = true;
-          return getDecorations({ doc: transaction.doc, name });
+          return getDecorations({ doc: transaction.doc, name, lineNumbers });
         }
 
         return decorationSet.map(transaction.mapping, transaction.doc);

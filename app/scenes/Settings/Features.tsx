@@ -1,8 +1,8 @@
 import { observer } from "mobx-react";
 import { BeakerIcon } from "outline-icons";
-import { useState } from "react";
 import * as React from "react";
-import { useTranslation, Trans } from "react-i18next";
+import { Trans, useTranslation } from "react-i18next";
+import { TeamPreference } from "@shared/types";
 import Heading from "~/components/Heading";
 import Scene from "~/components/Scene";
 import Switch from "~/components/Switch";
@@ -17,22 +17,20 @@ function Features() {
   const team = useCurrentTeam();
   const { t } = useTranslation();
   const { showToast } = useToasts();
-  const [data, setData] = useState({
-    collaborativeEditing: team.collaborativeEditing,
-  });
 
-  const handleChange = React.useCallback(
-    async (ev: React.ChangeEvent<HTMLInputElement>) => {
-      const newData = { ...data, [ev.target.name]: ev.target.checked };
-      setData(newData);
+  const handlePreferenceChange = async (
+    ev: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const preferences = {
+      ...team.preferences,
+      [ev.target.name]: ev.target.checked,
+    };
 
-      await auth.updateTeam(newData);
-      showToast(t("Settings saved"), {
-        type: "success",
-      });
-    },
-    [auth, data, showToast, t]
-  );
+    await auth.updateTeam({ preferences });
+    showToast(t("Settings saved"), {
+      type: "success",
+    });
+  };
 
   return (
     <Scene title={t("Features")} icon={<BeakerIcon color="currentColor" />}>
@@ -40,24 +38,41 @@ function Features() {
       <Text type="secondary">
         <Trans>
           Manage optional and beta features. Changing these settings will affect
-          the experience for all team members.
+          the experience for all members of the workspace.
         </Trans>
       </Text>
-      <SettingRow
-        name="collaborativeEditing"
-        label={t("Collaborative editing")}
-        description={t(
-          "When enabled multiple people can edit documents at the same time with shared presence and live cursors."
-        )}
-      >
-        <Switch
-          id="collaborativeEditing"
-          name="collaborativeEditing"
-          checked={data.collaborativeEditing}
-          disabled={data.collaborativeEditing}
-          onChange={handleChange}
-        />
-      </SettingRow>
+      {team.collaborativeEditing && (
+        <SettingRow
+          name={TeamPreference.SeamlessEdit}
+          label={t("Seamless editing")}
+          description={t(
+            `When enabled documents are always editable for team members that have permission. When disabled there is a separate editing view.`
+          )}
+        >
+          <Switch
+            id={TeamPreference.SeamlessEdit}
+            name={TeamPreference.SeamlessEdit}
+            checked={team.getPreference(TeamPreference.SeamlessEdit, true)}
+            onChange={handlePreferenceChange}
+          />
+        </SettingRow>
+      )}
+      {team.avatarUrl && (
+        <SettingRow
+          name={TeamPreference.PublicBranding}
+          label={t("Public branding")}
+          description={t(
+            "Show your team’s logo on public pages like login and shared documents."
+          )}
+        >
+          <Switch
+            id={TeamPreference.PublicBranding}
+            name={TeamPreference.PublicBranding}
+            checked={team.getPreference(TeamPreference.PublicBranding, false)}
+            onChange={handlePreferenceChange}
+          />
+        </SettingRow>
+      )}
     </Scene>
   );
 }

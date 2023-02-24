@@ -37,7 +37,7 @@ function Breadcrumb({
   return (
     <Flex justify="flex-start" align="center">
       {topLevelItems.map((item, index) => (
-        <React.Fragment key={item.to || index}>
+        <React.Fragment key={String(item.to) || index}>
           {item.icon}
           {item.to ? (
             <Item
@@ -67,6 +67,7 @@ const Item = styled(Link)<{ $highlight: boolean; $withIcon: boolean }>`
   display: flex;
   flex-shrink: 1;
   min-width: 0;
+  cursor: var(--pointer);
   color: ${(props) => props.theme.text};
   font-size: 15px;
   height: 24px;

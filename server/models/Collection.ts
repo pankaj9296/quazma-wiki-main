@@ -18,24 +18,28 @@ import {
   ForeignKey,
   Scopes,
   DataType,
+  Length as SimpleLength,
 } from "sequelize-typescript";
 import isUUID from "validator/lib/isUUID";
+import type { CollectionSort } from "@shared/types";
+import { CollectionPermission, NavigationNode } from "@shared/types";
 import { sortNavigationNodes } from "@shared/utils/collections";
 import { SLUG_URL_REGEX } from "@shared/utils/urlHelpers";
+import { CollectionValidation } from "@shared/validations";
 import slugify from "@server/utils/slugify";
-import { NavigationNode, CollectionSort } from "~/types";
 import CollectionGroup from "./CollectionGroup";
 import CollectionUser from "./CollectionUser";
 import Document from "./Document";
+import FileOperation from "./FileOperation";
 import Group from "./Group";
 import GroupUser from "./GroupUser";
 import Team from "./Team";
 import User from "./User";
 import ParanoidModel from "./base/ParanoidModel";
 import Fix from "./decorators/Fix";
-
-// without this indirection, the app crashes on starup
-type Sort = CollectionSort;
+import IsHexColor from "./validators/IsHexColor";
+import Length from "./validators/Length";
+import NotContainsUrl from "./validators/NotContainsUrl";
 
 @Scopes(() => ({
   withAllMemberships: {
@@ -127,28 +131,51 @@ type Sort = CollectionSort;
 @Table({ tableName: "collections", modelName: "collection" })
 @Fix
 class Collection extends ParanoidModel {
+  @SimpleLength({
+    min: 10,
+    max: 10,
+    msg: `urlId must be 10 characters`,
+  })
   @Unique
   @Column
   urlId: string;
 
+  @NotContainsUrl
+  @Length({
+    max: CollectionValidation.maxNameLength,
+    msg: `name must be ${CollectionValidation.maxNameLength} characters or less`,
+  })
   @Column
   name: string;
 
+  @Length({
+    max: CollectionValidation.maxDescriptionLength,
+    msg: `description must be ${CollectionValidation.maxDescriptionLength} characters or less`,
+  })
   @Column
-  description: string;
+  description: string | null;
 
+  @Length({
+    max: 50,
+    msg: `icon must be 50 characters or less`,
+  })
   @Column
   icon: string | null;
 
+  @IsHexColor
   @Column
   color: string | null;
 
+  @Length({
+    max: 50,
+    msg: `index must 50 characters or less`,
+  })
   @Column
   index: string | null;
 
-  @IsIn([["read", "read_write"]])
-  @Column
-  permission: "read" | "read_write" | null;
+  @IsIn([Object.values(CollectionPermission)])
+  @Column(DataType.STRING)
+  permission: CollectionPermission | null;
 
   @Default(false)
   @Column
@@ -165,7 +192,7 @@ class Collection extends ParanoidModel {
   @Column({
     type: DataType.JSONB,
     validate: {
-      isSort(value: Sort) {
+      isSort(value: CollectionSort) {
         if (
           typeof value !== "object" ||
           !value.direction ||
@@ -185,7 +212,7 @@ class Collection extends ParanoidModel {
       },
     },
   })
-  sort: Sort;
+  sort: CollectionSort;
 
   // getters
 
@@ -227,14 +254,14 @@ class Collection extends ParanoidModel {
     model: Collection,
     options: { transaction: Transaction }
   ) {
-    if (model.permission !== "read_write") {
+    if (model.permission !== CollectionPermission.ReadWrite) {
       return CollectionUser.findOrCreate({
         where: {
           collectionId: model.id,
           userId: model.createdById,
         },
         defaults: {
-          permission: "read_write",
+          permission: CollectionPermission.ReadWrite,
           createdById: model.createdById,
         },
         transaction: options.transaction,
@@ -245,6 +272,13 @@ class Collection extends ParanoidModel {
   }
 
   // associations
+
+  @BelongsTo(() => FileOperation, "importId")
+  import: FileOperation | null;
+
+  @ForeignKey(() => FileOperation)
+  @Column(DataType.UUID)
+  importId: string | null;
 
   @HasMany(() => Document, "collectionId")
   documents: Document[];
@@ -520,7 +554,7 @@ class Collection extends ParanoidModel {
    */
   updateDocument = async function (
     updatedDocument: Document,
-    options?: { transaction?: Transaction | null }
+    options?: { transaction?: Transaction | null | undefined }
   ) {
     if (!this.documentStructure) {
       return;
@@ -529,21 +563,23 @@ class Collection extends ParanoidModel {
     const { id } = updatedDocument;
 
     const updateChildren = (documents: NavigationNode[]) => {
-      return documents.map((document) => {
-        if (document.id === id) {
-          document = {
-            ...(updatedDocument.toJSON() as NavigationNode),
-            children: document.children,
-          };
-        } else {
-          document.children = updateChildren(document.children);
-        }
+      return Promise.all(
+        documents.map(async (document) => {
+          if (document.id === id) {
+            document = {
+              ...(await updatedDocument.toNavigationNode(options)),
+              children: document.children,
+            };
+          } else {
+            document.children = await updateChildren(document.children);
+          }
 
-        return document;
-      });
+          return document;
+        })
+      );
     };
 
-    this.documentStructure = updateChildren(this.documentStructure);
+    this.documentStructure = await updateChildren(this.documentStructure);
     // Sequelize doesn't seem to set the value with splice on JSONB field
     // https://github.com/sequelize/sequelize/blob/e1446837196c07b8ff0c23359b958d68af40fd6d/src/model.js#L3937
     this.changed("documentStructure", true);
@@ -568,7 +604,10 @@ class Collection extends ParanoidModel {
     }
 
     // If moving existing document with children, use existing structure
-    const documentJson = { ...document.toJSON(), ...options.documentJson };
+    const documentJson = {
+      ...(await document.toNavigationNode(options)),
+      ...options.documentJson,
+    };
 
     if (!document.parentDocumentId) {
       // Note: Index is supported on DB level but it's being ignored

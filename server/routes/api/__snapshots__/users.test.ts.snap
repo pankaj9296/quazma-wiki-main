@@ -1,9 +1,9 @@
 // Jest Snapshot v1, https://goo.gl/fbAQLP
 
 exports[`#users.activate should activate a suspended user 1`] = `
-Object {
-  "data": Object {
-    "avatarUrl": "https://tiley.herokuapp.com/avatar/111d68d06e2d317b5a59c2c6c5bad808/U.png?c=e600e0",
+{
+  "data": {
+    "avatarUrl": null,
     "color": "#e600e0",
     "createdAt": "2018-01-02T00:00:00.000Z",
     "email": "user1@example.com",
@@ -14,12 +14,13 @@ Object {
     "language": "en_US",
     "lastActiveAt": null,
     "name": "User 1",
+    "preferences": null,
     "updatedAt": "2018-01-02T00:00:00.000Z",
   },
   "ok": true,
-  "policies": Array [
-    Object {
-      "abilities": Object {
+  "policies": [
+    {
+      "abilities": {
         "activate": true,
         "delete": true,
         "demote": true,
@@ -38,7 +39,7 @@ Object {
 `;
 
 exports[`#users.activate should require admin 1`] = `
-Object {
+{
   "error": "admin_required",
   "message": "An admin role is required to access this resource",
   "ok": false,
@@ -47,7 +48,7 @@ Object {
 `;
 
 exports[`#users.delete should require authentication 1`] = `
-Object {
+{
   "error": "authentication_required",
   "message": "Authentication required",
   "ok": false,
@@ -56,9 +57,9 @@ Object {
 `;
 
 exports[`#users.demote should demote an admin 1`] = `
-Object {
-  "data": Object {
-    "avatarUrl": "https://tiley.herokuapp.com/avatar/111d68d06e2d317b5a59c2c6c5bad808/U.png?c=e600e0",
+{
+  "data": {
+    "avatarUrl": null,
     "color": "#e600e0",
     "createdAt": "2018-01-02T00:00:00.000Z",
     "email": "user1@example.com",
@@ -69,12 +70,13 @@ Object {
     "language": "en_US",
     "lastActiveAt": null,
     "name": "User 1",
+    "preferences": null,
     "updatedAt": "2018-01-02T00:00:00.000Z",
   },
   "ok": true,
-  "policies": Array [
-    Object {
-      "abilities": Object {
+  "policies": [
+    {
+      "abilities": {
         "activate": true,
         "delete": true,
         "demote": true,
@@ -93,9 +95,9 @@ Object {
 `;
 
 exports[`#users.demote should demote an admin to member 1`] = `
-Object {
-  "data": Object {
-    "avatarUrl": "https://tiley.herokuapp.com/avatar/111d68d06e2d317b5a59c2c6c5bad808/U.png?c=e600e0",
+{
+  "data": {
+    "avatarUrl": null,
     "color": "#e600e0",
     "createdAt": "2018-01-02T00:00:00.000Z",
     "email": "user1@example.com",
@@ -106,12 +108,13 @@ Object {
     "language": "en_US",
     "lastActiveAt": null,
     "name": "User 1",
+    "preferences": null,
     "updatedAt": "2018-01-02T00:00:00.000Z",
   },
   "ok": true,
-  "policies": Array [
-    Object {
-      "abilities": Object {
+  "policies": [
+    {
+      "abilities": {
         "activate": true,
         "delete": true,
         "demote": true,
@@ -130,9 +133,9 @@ Object {
 `;
 
 exports[`#users.demote should demote an admin to viewer 1`] = `
-Object {
-  "data": Object {
-    "avatarUrl": "https://tiley.herokuapp.com/avatar/111d68d06e2d317b5a59c2c6c5bad808/U.png?c=e600e0",
+{
+  "data": {
+    "avatarUrl": null,
     "color": "#e600e0",
     "createdAt": "2018-01-02T00:00:00.000Z",
     "email": "user1@example.com",
@@ -143,12 +146,13 @@ Object {
     "language": "en_US",
     "lastActiveAt": null,
     "name": "User 1",
+    "preferences": null,
     "updatedAt": "2018-01-02T00:00:00.000Z",
   },
   "ok": true,
-  "policies": Array [
-    Object {
-      "abilities": Object {
+  "policies": [
+    {
+      "abilities": {
         "activate": true,
         "delete": true,
         "demote": true,
@@ -166,17 +170,17 @@ Object {
 }
 `;
 
-exports[`#users.demote should not demote admins if only one available 1`] = `
-Object {
+exports[`#users.demote should not allow demoting self 1`] = `
+{
   "error": "validation_error",
-  "message": "At least one admin is required",
+  "message": "Unable to demote the current user",
   "ok": false,
   "status": 400,
 }
 `;
 
 exports[`#users.demote should require admin 1`] = `
-Object {
+{
   "error": "admin_required",
   "message": "An admin role is required to access this resource",
   "ok": false,
@@ -185,9 +189,9 @@ Object {
 `;
 
 exports[`#users.promote should promote a new admin 1`] = `
-Object {
-  "data": Object {
-    "avatarUrl": "https://tiley.herokuapp.com/avatar/111d68d06e2d317b5a59c2c6c5bad808/U.png?c=e600e0",
+{
+  "data": {
+    "avatarUrl": null,
     "color": "#e600e0",
     "createdAt": "2018-01-02T00:00:00.000Z",
     "email": "user1@example.com",
@@ -198,12 +202,13 @@ Object {
     "language": "en_US",
     "lastActiveAt": null,
     "name": "User 1",
+    "preferences": null,
     "updatedAt": "2018-01-02T00:00:00.000Z",
   },
   "ok": true,
-  "policies": Array [
-    Object {
-      "abilities": Object {
+  "policies": [
+    {
+      "abilities": {
         "activate": true,
         "delete": true,
         "demote": true,
@@ -222,7 +227,7 @@ Object {
 `;
 
 exports[`#users.promote should require admin 1`] = `
-Object {
+{
   "error": "admin_required",
   "message": "An admin role is required to access this resource",
   "ok": false,
@@ -231,7 +236,7 @@ Object {
 `;
 
 exports[`#users.suspend should not allow suspending the user themselves 1`] = `
-Object {
+{
   "error": "validation_error",
   "message": "Unable to suspend the current user",
   "ok": false,
@@ -240,7 +245,7 @@ Object {
 `;
 
 exports[`#users.suspend should require admin 1`] = `
-Object {
+{
   "error": "admin_required",
   "message": "An admin role is required to access this resource",
   "ok": false,
@@ -249,9 +254,9 @@ Object {
 `;
 
 exports[`#users.suspend should suspend an user 1`] = `
-Object {
-  "data": Object {
-    "avatarUrl": "https://tiley.herokuapp.com/avatar/111d68d06e2d317b5a59c2c6c5bad808/U.png?c=e600e0",
+{
+  "data": {
+    "avatarUrl": null,
     "color": "#e600e0",
     "createdAt": "2018-01-02T00:00:00.000Z",
     "email": "user1@example.com",
@@ -262,12 +267,13 @@ Object {
     "language": "en_US",
     "lastActiveAt": null,
     "name": "User 1",
+    "preferences": null,
     "updatedAt": "2018-01-02T00:00:00.000Z",
   },
   "ok": true,
-  "policies": Array [
-    Object {
-      "abilities": Object {
+  "policies": [
+    {
+      "abilities": {
         "activate": true,
         "delete": true,
         "demote": false,
@@ -286,7 +292,7 @@ Object {
 `;
 
 exports[`#users.update should require authentication 1`] = `
-Object {
+{
   "error": "authentication_required",
   "message": "Authentication required",
   "ok": false,

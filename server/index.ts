@@ -1,38 +1,36 @@
 /* eslint-disable import/order */
 import env from "./env";
 
-import "./logging/tracing"; // must come before importing any instrumented module
+import "./logging/tracer"; // must come before importing any instrumented module
 
 import http from "http";
 import https from "https";
 import Koa from "koa";
-import compress from "koa-compress";
 import helmet from "koa-helmet";
 import logger from "koa-logger";
-import onerror from "koa-onerror";
 import Router from "koa-router";
 import { uniq } from "lodash";
 import { AddressInfo } from "net";
 import stoppable from "stoppable";
 import throng from "throng";
 import Logger from "./logging/Logger";
-import { requestErrorHandler } from "./logging/sentry";
 import services from "./services";
 import { getArg } from "./utils/args";
 import { getSSLOptions } from "./utils/ssl";
-import { checkEnv, checkMigrations } from "./utils/startup";
+import { defaultRateLimiter } from "@server/middlewares/rateLimiter";
+import {
+  checkEnv,
+  checkMigrations,
+  checkPendingMigrations,
+} from "./utils/startup";
 import { checkUpdates } from "./utils/updates";
-
-// If a services flag is passed it takes priority over the environment variable
-// for example: --services=web,worker
-const normalizedServiceFlag = getArg("services");
+import onerror from "./onerror";
+import ShutdownHelper, { ShutdownOrder } from "./utils/ShutdownHelper";
 
 // The default is to run all services to make development and OSS installations
 // easier to deal with. Separate services are only needed at scale.
 const serviceNames = uniq(
-  (normalizedServiceFlag || env.SERVICES)
-    .split(",")
-    .map((service) => service.trim())
+  env.SERVICES.split(",").map((service) => service.trim())
 );
 
 // The number of processes to run, defaults to the number of CPU's available
@@ -53,6 +51,7 @@ if (serviceNames.includes("collaboration")) {
 // This function will only be called once in the original process
 async function master() {
   await checkEnv();
+  checkPendingMigrations();
   await checkMigrations();
 
   if (env.TELEMETRY && env.ENVIRONMENT === "production") {
@@ -73,7 +72,8 @@ async function start(id: number, disconnect: () => void) {
   const server = stoppable(
     useHTTPS
       ? https.createServer(ssl, app.callback())
-      : http.createServer(app.callback())
+      : http.createServer(app.callback()),
+    ShutdownHelper.connectionGraceTimeout
   );
   const router = new Router();
 
@@ -82,12 +82,13 @@ async function start(id: number, disconnect: () => void) {
     app.use(logger((str) => Logger.info("http", str)));
   }
 
-  app.use(compress());
   app.use(helmet());
 
   // catch errors in one place, automatically set status and response headers
   onerror(app);
-  app.on("error", requestErrorHandler);
+
+  // Apply default rate limit to all routes
+  app.use(defaultRateLimiter());
 
   // install health check endpoint for all services
   router.get("/_health", (ctx) => (ctx.body = "OK"));
@@ -101,7 +102,7 @@ async function start(id: number, disconnect: () => void) {
 
     Logger.info("lifecycle", `Starting ${name} service`);
     const init = services[name];
-    await init(app, server);
+    await init(app, server, serviceNames);
   }
 
   server.on("error", (err) => {
@@ -117,15 +118,30 @@ async function start(id: number, disconnect: () => void) {
       }`
     );
   });
-  server.listen(normalizedPortFlag || env.PORT || "3000");
-  process.once("SIGTERM", shutdown);
-  process.once("SIGINT", shutdown);
 
-  function shutdown() {
-    Logger.info("lifecycle", "Stopping server");
-    server.emit("shutdown");
-    server.stop(disconnect);
-  }
+  server.listen(normalizedPortFlag || env.PORT || "3000");
+  server.setTimeout(env.REQUEST_TIMEOUT);
+
+  ShutdownHelper.add("server", ShutdownOrder.last, () => {
+    return new Promise((resolve, reject) => {
+      // Calling stop prevents new connections from being accepted and waits for
+      // existing connections to close for the grace period before forcefully
+      // closing them.
+      server.stop((err, gracefully) => {
+        disconnect();
+
+        if (err) {
+          reject(err);
+        } else {
+          resolve(gracefully);
+        }
+      });
+    });
+  });
+
+  // Handle shutdown signals
+  process.once("SIGTERM", () => ShutdownHelper.execute());
+  process.once("SIGINT", () => ShutdownHelper.execute());
 }
 
 throng({

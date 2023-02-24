@@ -1,11 +1,9 @@
 import { observer } from "mobx-react";
 import {
   NewDocumentIcon,
-  EditIcon,
   TrashIcon,
   ImportIcon,
   ExportIcon,
-  PadlockIcon,
   AlphabeticalSortIcon,
   ManualSortIcon,
   UnstarredIcon,
@@ -16,15 +14,19 @@ import { useTranslation } from "react-i18next";
 import { useHistory } from "react-router-dom";
 import { useMenuState, MenuButton, MenuButtonHTMLProps } from "reakit/Menu";
 import { VisuallyHidden } from "reakit/VisuallyHidden";
-import getDataTransferFiles from "@shared/utils/getDataTransferFiles";
+import { getEventFiles } from "@shared/utils/files";
 import Collection from "~/models/Collection";
-import CollectionEdit from "~/scenes/CollectionEdit";
-import CollectionExport from "~/scenes/CollectionExport";
-import CollectionPermissions from "~/scenes/CollectionPermissions";
 import CollectionDeleteDialog from "~/components/CollectionDeleteDialog";
 import ContextMenu, { Placement } from "~/components/ContextMenu";
 import OverflowMenuButton from "~/components/ContextMenu/OverflowMenuButton";
 import Template from "~/components/ContextMenu/Template";
+import ExportDialog from "~/components/ExportDialog";
+import { actionToMenuItem } from "~/actions";
+import {
+  editCollection,
+  editCollectionPermissions,
+} from "~/actions/definitions/collections";
+import useActionContext from "~/hooks/useActionContext";
 import useCurrentTeam from "~/hooks/useCurrentTeam";
 import usePolicy from "~/hooks/usePolicy";
 import useStores from "~/hooks/useStores";
@@ -60,30 +62,12 @@ function CollectionMenu({
   const history = useHistory();
   const file = React.useRef<HTMLInputElement>(null);
 
-  const handlePermissions = React.useCallback(() => {
-    dialogs.openModal({
-      title: t("Collection permissions"),
-      content: <CollectionPermissions collection={collection} />,
-    });
-  }, [collection, dialogs, t]);
-
-  const handleEdit = React.useCallback(() => {
-    dialogs.openModal({
-      title: t("Edit collection"),
-      content: (
-        <CollectionEdit
-          collectionId={collection.id}
-          onSubmit={dialogs.closeAllModals}
-        />
-      ),
-    });
-  }, [collection.id, dialogs, t]);
-
   const handleExport = React.useCallback(() => {
     dialogs.openModal({
       title: t("Export collection"),
+      isCentered: true,
       content: (
-        <CollectionExport
+        <ExportDialog
           collection={collection}
           onSubmit={dialogs.closeAllModals}
         />
@@ -117,8 +101,8 @@ function CollectionMenu({
   );
 
   const handleFilePicked = React.useCallback(
-    async (ev: React.FormEvent<HTMLInputElement>) => {
-      const files = getDataTransferFiles(ev);
+    async (ev: React.ChangeEvent<HTMLInputElement>) => {
+      const files = getEventFiles(ev);
 
       // Because this is the onChange handler it's possible for the change to be
       // from previously selecting a file to not selecting a file – aka empty
@@ -186,9 +170,14 @@ function CollectionMenu({
     [collection]
   );
 
+  const context = useActionContext({
+    isContextMenu: true,
+    activeCollectionId: collection.id,
+  });
+
   const alphabeticalSort = collection.sort.field === "title";
-  const can = usePolicy(collection.id);
-  const canUserInTeam = usePolicy(team.id);
+  const can = usePolicy(collection);
+  const canUserInTeam = usePolicy(team);
   const items: MenuItem[] = React.useMemo(
     () => [
       {
@@ -225,6 +214,8 @@ function CollectionMenu({
       {
         type: "separator",
       },
+      actionToMenuItem(editCollection, context),
+      actionToMenuItem(editCollectionPermissions, context),
       {
         type: "submenu",
         title: t("Sort in sidebar"),
@@ -251,22 +242,8 @@ function CollectionMenu({
       },
       {
         type: "button",
-        title: `${t("Edit")}…`,
-        visible: can.update,
-        onClick: handleEdit,
-        icon: <EditIcon />,
-      },
-      {
-        type: "button",
-        title: `${t("Permissions")}…`,
-        visible: can.update,
-        onClick: handlePermissions,
-        icon: <PadlockIcon />,
-      },
-      {
-        type: "button",
         title: `${t("Export")}…`,
-        visible: !!(collection && canUserInTeam.export),
+        visible: !!(collection && canUserInTeam.createExport),
         onClick: handleExport,
         icon: <ExportIcon />,
       },
@@ -293,10 +270,9 @@ function CollectionMenu({
       handleStar,
       handleNewDocument,
       handleImportDocument,
+      context,
       alphabeticalSort,
-      handleEdit,
-      handlePermissions,
-      canUserInTeam.export,
+      canUserInTeam.createExport,
       handleExport,
       handleDelete,
       handleChangeSort,

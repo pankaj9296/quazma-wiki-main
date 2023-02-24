@@ -2,12 +2,21 @@ import fractionalIndex from "fractional-index";
 import invariant from "invariant";
 import Router from "koa-router";
 import { Sequelize, Op, WhereOptions } from "sequelize";
+import { randomElement } from "@shared/random";
+import {
+  CollectionPermission,
+  FileOperationFormat,
+  FileOperationState,
+  FileOperationType,
+} from "@shared/types";
+import { colorPalette } from "@shared/utils/collections";
 import collectionExporter from "@server/commands/collectionExporter";
 import teamUpdater from "@server/commands/teamUpdater";
 import { sequelize } from "@server/database/sequelize";
-import { ValidationError } from "@server/errors";
+import { AuthorizationError, ValidationError } from "@server/errors";
 import auth from "@server/middlewares/authentication";
-
+import { rateLimiter } from "@server/middlewares/rateLimiter";
+import { transaction } from "@server/middlewares/transaction";
 import {
   Collection,
   CollectionUser,
@@ -19,11 +28,6 @@ import {
   Attachment,
   FileOperation,
 } from "@server/models";
-import {
-  FileOperationFormat,
-  FileOperationState,
-  FileOperationType,
-} from "@server/models/FileOperation";
 import { authorize } from "@server/policies";
 import {
   presentCollection,
@@ -34,6 +38,8 @@ import {
   presentCollectionGroupMembership,
   presentFileOperation,
 } from "@server/presenters";
+import { APIContext } from "@server/types";
+import { RateLimiterStrategy } from "@server/utils/RateLimiter";
 import { collectionIndexing } from "@server/utils/indexing";
 import removeIndexCollision from "@server/utils/removeIndexCollision";
 import {
@@ -42,29 +48,30 @@ import {
   assertPresent,
   assertHexColor,
   assertIndexCharacters,
+  assertCollectionPermission,
 } from "@server/validation";
 import pagination from "./middlewares/pagination";
 
 const router = new Router();
 
-router.post("collections.create", auth(), async (ctx) => {
+router.post("collections.create", auth(), async (ctx: APIContext) => {
   const {
     name,
-    color,
+    color = randomElement(colorPalette),
     description,
     permission,
     sharing,
     icon,
     sort = Collection.DEFAULT_SORT,
-  } = ctx.body;
-  let { index } = ctx.body;
+  } = ctx.request.body;
+  let { index } = ctx.request.body;
   assertPresent(name, "name is required");
 
   if (color) {
     assertHexColor(color, "Invalid hex value (please use format #FFFFFF)");
   }
 
-  const { user } = ctx.state;
+  const { user } = ctx.state.auth;
   authorize(user, "createCollection", user.team);
 
   if (index) {
@@ -125,10 +132,10 @@ router.post("collections.create", auth(), async (ctx) => {
   };
 });
 
-router.post("collections.info", auth(), async (ctx) => {
-  const { id } = ctx.body;
+router.post("collections.info", auth(), async (ctx: APIContext) => {
+  const { id } = ctx.request.body;
   assertPresent(id, "id is required");
-  const { user } = ctx.state;
+  const { user } = ctx.state.auth;
   const collection = await Collection.scope({
     method: ["withMembership", user.id],
   }).findByPk(id);
@@ -141,67 +148,82 @@ router.post("collections.info", auth(), async (ctx) => {
   };
 });
 
-router.post("collections.import", auth(), async (ctx) => {
-  const { attachmentId, format = FileOperationFormat.MarkdownZip } = ctx.body;
-  assertUuid(attachmentId, "attachmentId is required");
+router.post(
+  "collections.import",
+  auth(),
+  rateLimiter(RateLimiterStrategy.TenPerHour),
+  async (ctx: APIContext) => {
+    const {
+      attachmentId,
+      format = FileOperationFormat.MarkdownZip,
+    } = ctx.request.body;
+    assertUuid(attachmentId, "attachmentId is required");
 
-  const { user } = ctx.state;
-  authorize(user, "importCollection", user.team);
+    const { user } = ctx.state.auth;
+    authorize(user, "importCollection", user.team);
 
-  const attachment = await Attachment.findByPk(attachmentId);
-  authorize(user, "read", attachment);
+    const attachment = await Attachment.findByPk(attachmentId);
+    authorize(user, "read", attachment);
 
-  assertIn(format, Object.values(FileOperationFormat), "Invalid format");
+    assertIn(format, Object.values(FileOperationFormat), "Invalid format");
 
-  await sequelize.transaction(async (transaction) => {
-    const fileOperation = await FileOperation.create(
-      {
-        type: FileOperationType.Import,
-        state: FileOperationState.Creating,
-        format,
-        size: attachment.size,
-        key: attachment.key,
-        userId: user.id,
-        teamId: user.teamId,
-      },
-      {
-        transaction,
-      }
-    );
-
-    await Event.create(
-      {
-        name: "fileOperations.create",
-        teamId: user.teamId,
-        actorId: user.id,
-        modelId: fileOperation.id,
-        data: {
+    await sequelize.transaction(async (transaction) => {
+      const fileOperation = await FileOperation.create(
+        {
           type: FileOperationType.Import,
+          state: FileOperationState.Creating,
+          format,
+          size: attachment.size,
+          key: attachment.key,
+          userId: user.id,
+          teamId: user.teamId,
         },
-      },
-      {
-        transaction,
-      }
-    );
-  });
+        {
+          transaction,
+        }
+      );
 
-  ctx.body = {
-    success: true,
-  };
-});
+      await Event.create(
+        {
+          name: "fileOperations.create",
+          teamId: user.teamId,
+          actorId: user.id,
+          modelId: fileOperation.id,
+          data: {
+            type: FileOperationType.Import,
+          },
+        },
+        {
+          transaction,
+        }
+      );
+    });
 
-router.post("collections.add_group", auth(), async (ctx) => {
-  const { id, groupId, permission = "read_write" } = ctx.body;
+    ctx.body = {
+      success: true,
+    };
+  }
+);
+
+router.post("collections.add_group", auth(), async (ctx: APIContext) => {
+  const {
+    id,
+    groupId,
+    permission = CollectionPermission.ReadWrite,
+  } = ctx.request.body;
   assertUuid(id, "id is required");
   assertUuid(groupId, "groupId is required");
+  assertCollectionPermission(permission);
+
+  const { user } = ctx.state.auth;
 
   const collection = await Collection.scope({
-    method: ["withMembership", ctx.state.user.id],
+    method: ["withMembership", user.id],
   }).findByPk(id);
-  authorize(ctx.state.user, "update", collection);
+  authorize(user, "update", collection);
 
   const group = await Group.findByPk(groupId);
-  authorize(ctx.state.user, "read", group);
+  authorize(user, "read", group);
 
   let membership = await CollectionGroup.findOne({
     where: {
@@ -215,7 +237,7 @@ router.post("collections.add_group", auth(), async (ctx) => {
       collectionId: id,
       groupId,
       permission,
-      createdById: ctx.state.user.id,
+      createdById: user.id,
     });
   } else if (permission) {
     membership.permission = permission;
@@ -226,7 +248,7 @@ router.post("collections.add_group", auth(), async (ctx) => {
     name: "collections.add_group",
     collectionId: collection.id,
     teamId: collection.teamId,
-    actorId: ctx.state.user.id,
+    actorId: user.id,
     modelId: groupId,
     data: {
       name: group.name,
@@ -243,25 +265,27 @@ router.post("collections.add_group", auth(), async (ctx) => {
   };
 });
 
-router.post("collections.remove_group", auth(), async (ctx) => {
-  const { id, groupId } = ctx.body;
+router.post("collections.remove_group", auth(), async (ctx: APIContext) => {
+  const { id, groupId } = ctx.request.body;
   assertUuid(id, "id is required");
   assertUuid(groupId, "groupId is required");
 
+  const { user } = ctx.state.auth;
+
   const collection = await Collection.scope({
-    method: ["withMembership", ctx.state.user.id],
+    method: ["withMembership", user.id],
   }).findByPk(id);
-  authorize(ctx.state.user, "update", collection);
+  authorize(user, "update", collection);
 
   const group = await Group.findByPk(groupId);
-  authorize(ctx.state.user, "read", group);
+  authorize(user, "read", group);
 
   await collection.$remove("group", group);
   await Event.create({
     name: "collections.remove_group",
     collectionId: collection.id,
     teamId: collection.teamId,
-    actorId: ctx.state.user.id,
+    actorId: user.id,
     modelId: groupId,
     data: {
       name: group.name,
@@ -278,10 +302,10 @@ router.post(
   "collections.group_memberships",
   auth(),
   pagination(),
-  async (ctx) => {
-    const { id, query, permission } = ctx.body;
+  async (ctx: APIContext) => {
+    const { id, query, permission } = ctx.request.body;
     assertUuid(id, "id is required");
-    const { user } = ctx.state;
+    const { user } = ctx.state.auth;
 
     const collection = await Collection.scope({
       method: ["withMembership", user.id],
@@ -305,11 +329,8 @@ router.post(
       where = { ...where, permission };
     }
 
-    const memberships = await CollectionGroup.findAll({
+    const options = {
       where,
-      order: [["createdAt", "DESC"]],
-      offset: ctx.state.pagination.offset,
-      limit: ctx.state.pagination.limit,
       include: [
         {
           model: Group,
@@ -318,9 +339,20 @@ router.post(
           required: true,
         },
       ],
-    });
+    };
+
+    const [total, memberships] = await Promise.all([
+      CollectionGroup.count(options),
+      CollectionGroup.findAll({
+        ...options,
+        order: [["createdAt", "DESC"]],
+        offset: ctx.state.pagination.offset,
+        limit: ctx.state.pagination.limit,
+      }),
+    ]);
+
     ctx.body = {
-      pagination: ctx.state.pagination,
+      pagination: { ...ctx.state.pagination, total },
       data: {
         collectionGroupMemberships: memberships.map(
           presentCollectionGroupMembership
@@ -331,211 +363,262 @@ router.post(
   }
 );
 
-router.post("collections.add_user", auth(), async (ctx) => {
-  const { id, userId, permission = "read_write" } = ctx.body;
-  assertUuid(id, "id is required");
-  assertUuid(userId, "userId is required");
+router.post(
+  "collections.add_user",
+  auth(),
+  transaction(),
+  async (ctx: APIContext) => {
+    const { auth, transaction } = ctx.state;
+    const actor = auth.user;
+    const { id, userId, permission } = ctx.request.body;
+    assertUuid(id, "id is required");
+    assertUuid(userId, "userId is required");
 
-  const collection = await Collection.scope({
-    method: ["withMembership", ctx.state.user.id],
-  }).findByPk(id);
-  authorize(ctx.state.user, "update", collection);
+    const collection = await Collection.scope({
+      method: ["withMembership", actor.id],
+    }).findByPk(id);
+    authorize(actor, "update", collection);
 
-  const user = await User.findByPk(userId);
-  authorize(ctx.state.user, "read", user);
+    const user = await User.findByPk(userId);
+    authorize(actor, "read", user);
 
-  let membership = await CollectionUser.findOne({
-    where: {
-      collectionId: id,
-      userId,
-    },
-  });
-
-  if (!membership) {
-    membership = await CollectionUser.create({
-      collectionId: id,
-      userId,
-      permission,
-      createdById: ctx.state.user.id,
+    let membership = await CollectionUser.findOne({
+      where: {
+        collectionId: id,
+        userId,
+      },
+      transaction,
+      lock: transaction.LOCK.UPDATE,
     });
-  } else if (permission) {
-    membership.permission = permission;
-    await membership.save();
-  }
 
-  await Event.create({
-    name: "collections.add_user",
-    userId,
-    collectionId: collection.id,
-    teamId: collection.teamId,
-    actorId: ctx.state.user.id,
-    data: {
-      name: user.name,
-    },
-    ip: ctx.request.ip,
-  });
+    if (userId === actor.id) {
+      throw AuthorizationError("You cannot add yourself to a collection");
+    }
 
-  ctx.body = {
-    data: {
-      users: [presentUser(user)],
-      memberships: [presentMembership(membership)],
-    },
-  };
-});
+    if (permission) {
+      assertCollectionPermission(permission);
+    }
 
-router.post("collections.remove_user", auth(), async (ctx) => {
-  const { id, userId } = ctx.body;
-  assertUuid(id, "id is required");
-  assertUuid(userId, "userId is required");
+    if (!membership) {
+      membership = await CollectionUser.create(
+        {
+          collectionId: id,
+          userId,
+          permission: permission || user.defaultCollectionPermission,
+          createdById: actor.id,
+        },
+        {
+          transaction,
+        }
+      );
+    } else if (permission) {
+      membership.permission = permission;
+      await membership.save({ transaction });
+    }
 
-  const collection = await Collection.scope({
-    method: ["withMembership", ctx.state.user.id],
-  }).findByPk(id);
-  authorize(ctx.state.user, "update", collection);
+    await Event.create(
+      {
+        name: "collections.add_user",
+        userId,
+        collectionId: collection.id,
+        teamId: collection.teamId,
+        actorId: actor.id,
+        data: {
+          name: user.name,
+        },
+        ip: ctx.request.ip,
+      },
+      {
+        transaction,
+      }
+    );
 
-  const user = await User.findByPk(userId);
-  authorize(ctx.state.user, "read", user);
-
-  await collection.$remove("user", user);
-  await Event.create({
-    name: "collections.remove_user",
-    userId,
-    collectionId: collection.id,
-    teamId: collection.teamId,
-    actorId: ctx.state.user.id,
-    data: {
-      name: user.name,
-    },
-    ip: ctx.request.ip,
-  });
-
-  ctx.body = {
-    success: true,
-  };
-});
-
-// DEPRECATED: Use collection.memberships which has pagination, filtering and permissions
-router.post("collections.users", auth(), async (ctx) => {
-  const { id } = ctx.body;
-  assertUuid(id, "id is required");
-  const { user } = ctx.state;
-
-  const collection = await Collection.scope({
-    method: ["withMembership", user.id],
-  }).findByPk(id);
-  authorize(user, "read", collection);
-
-  const users = await collection.$get("users");
-
-  ctx.body = {
-    data: users.map((user) => presentUser(user)),
-  };
-});
-
-router.post("collections.memberships", auth(), pagination(), async (ctx) => {
-  const { id, query, permission } = ctx.body;
-  assertUuid(id, "id is required");
-  const { user } = ctx.state;
-
-  const collection = await Collection.scope({
-    method: ["withMembership", user.id],
-  }).findByPk(id);
-  authorize(user, "read", collection);
-
-  let where: WhereOptions<CollectionUser> = {
-    collectionId: id,
-  };
-  let userWhere;
-
-  if (query) {
-    userWhere = {
-      name: {
-        [Op.iLike]: `%${query}%`,
+    ctx.body = {
+      data: {
+        users: [presentUser(user)],
+        memberships: [presentMembership(membership)],
       },
     };
   }
+);
 
-  if (permission) {
-    where = { ...where, permission };
-  }
+router.post(
+  "collections.remove_user",
+  auth(),
+  transaction(),
+  async (ctx: APIContext) => {
+    const { auth, transaction } = ctx.state;
+    const actor = auth.user;
+    const { id, userId } = ctx.request.body;
+    assertUuid(id, "id is required");
+    assertUuid(userId, "userId is required");
 
-  const memberships = await CollectionUser.findAll({
-    where,
-    order: [["createdAt", "DESC"]],
-    offset: ctx.state.pagination.offset,
-    limit: ctx.state.pagination.limit,
-    include: [
+    const collection = await Collection.scope({
+      method: ["withMembership", actor.id],
+    }).findByPk(id);
+    authorize(actor, "update", collection);
+
+    const user = await User.findByPk(userId);
+    authorize(actor, "read", user);
+
+    await collection.$remove("user", user, { transaction });
+    await Event.create(
       {
-        model: User,
-        as: "user",
-        where: userWhere,
-        required: true,
+        name: "collections.remove_user",
+        userId,
+        collectionId: collection.id,
+        teamId: collection.teamId,
+        actorId: actor.id,
+        data: {
+          name: user.name,
+        },
+        ip: ctx.request.ip,
       },
-    ],
-  });
+      { transaction }
+    );
 
-  ctx.body = {
-    pagination: ctx.state.pagination,
-    data: {
-      memberships: memberships.map(presentMembership),
-      users: memberships.map((membership) => presentUser(membership.user)),
-    },
-  };
-});
+    ctx.body = {
+      success: true,
+    };
+  }
+);
 
-router.post("collections.export", auth(), async (ctx) => {
-  const { id } = ctx.body;
-  assertUuid(id, "id is required");
-  const { user } = ctx.state;
-  const team = await Team.findByPk(user.teamId);
-  authorize(user, "export", team);
+router.post(
+  "collections.memberships",
+  auth(),
+  pagination(),
+  async (ctx: APIContext) => {
+    const { id, query, permission } = ctx.request.body;
+    assertUuid(id, "id is required");
+    const { user } = ctx.state.auth;
 
-  const collection = await Collection.scope({
-    method: ["withMembership", user.id],
-  }).findByPk(id);
-  authorize(user, "read", collection);
+    const collection = await Collection.scope({
+      method: ["withMembership", user.id],
+    }).findByPk(id);
+    authorize(user, "read", collection);
 
-  const fileOperation = await sequelize.transaction(async (transaction) => {
-    return collectionExporter({
-      collection,
-      user,
-      team,
-      ip: ctx.request.ip,
-      transaction,
+    let where: WhereOptions<CollectionUser> = {
+      collectionId: id,
+    };
+    let userWhere;
+
+    if (query) {
+      userWhere = {
+        name: {
+          [Op.iLike]: `%${query}%`,
+        },
+      };
+    }
+
+    if (permission) {
+      assertCollectionPermission(permission);
+      where = { ...where, permission };
+    }
+
+    const options = {
+      where,
+      include: [
+        {
+          model: User,
+          as: "user",
+          where: userWhere,
+          required: true,
+        },
+      ],
+    };
+
+    const [total, memberships] = await Promise.all([
+      CollectionUser.count(options),
+      CollectionUser.findAll({
+        ...options,
+        order: [["createdAt", "DESC"]],
+        offset: ctx.state.pagination.offset,
+        limit: ctx.state.pagination.limit,
+      }),
+    ]);
+
+    ctx.body = {
+      pagination: { ...ctx.state.pagination, total },
+      data: {
+        memberships: memberships.map(presentMembership),
+        users: memberships.map((membership) => presentUser(membership.user)),
+      },
+    };
+  }
+);
+
+router.post(
+  "collections.export",
+  auth(),
+  rateLimiter(RateLimiterStrategy.TenPerHour),
+  async (ctx: APIContext) => {
+    const { id } = ctx.request.body;
+    const { format = FileOperationFormat.MarkdownZip } = ctx.request.body;
+
+    assertUuid(id, "id is required");
+    assertIn(format, Object.values(FileOperationFormat), "Invalid format");
+
+    const { user } = ctx.state.auth;
+    const team = await Team.findByPk(user.teamId);
+    authorize(user, "createExport", team);
+
+    const collection = await Collection.scope({
+      method: ["withMembership", user.id],
+    }).findByPk(id);
+    authorize(user, "read", collection);
+
+    const fileOperation = await sequelize.transaction(async (transaction) => {
+      return collectionExporter({
+        collection,
+        user,
+        team,
+        format,
+        ip: ctx.request.ip,
+        transaction,
+      });
     });
-  });
 
-  ctx.body = {
-    success: true,
-    data: {
-      fileOperation: presentFileOperation(fileOperation),
-    },
-  };
-});
+    ctx.body = {
+      success: true,
+      data: {
+        fileOperation: presentFileOperation(fileOperation),
+      },
+    };
+  }
+);
 
-router.post("collections.export_all", auth(), async (ctx) => {
-  const { user } = ctx.state;
-  const team = await Team.findByPk(user.teamId);
-  authorize(user, "export", team);
+router.post(
+  "collections.export_all",
+  auth(),
+  rateLimiter(RateLimiterStrategy.FivePerHour),
+  async (ctx: APIContext) => {
+    const { format = FileOperationFormat.MarkdownZip } = ctx.request.body;
+    const { user } = ctx.state.auth;
+    const team = await Team.findByPk(user.teamId);
+    authorize(user, "createExport", team);
 
-  const fileOperation = await sequelize.transaction(async (transaction) => {
-    return collectionExporter({
-      user,
-      team,
-      ip: ctx.request.ip,
-      transaction,
+    assertIn(format, Object.values(FileOperationFormat), "Invalid format");
+
+    const fileOperation = await sequelize.transaction(async (transaction) => {
+      return collectionExporter({
+        user,
+        team,
+        format,
+        ip: ctx.request.ip,
+        transaction,
+      });
     });
-  });
 
-  ctx.body = {
-    success: true,
-    data: {
-      fileOperation: presentFileOperation(fileOperation),
-    },
-  };
-});
+    ctx.body = {
+      success: true,
+      data: {
+        fileOperation: presentFileOperation(fileOperation),
+      },
+    };
+  }
+);
 
-router.post("collections.update", auth(), async (ctx) => {
+router.post("collections.update", auth(), async (ctx: APIContext) => {
   const {
     id,
     name,
@@ -545,28 +628,31 @@ router.post("collections.update", auth(), async (ctx) => {
     color,
     sort,
     sharing,
-  } = ctx.body;
+  } = ctx.request.body;
 
   if (color) {
     assertHexColor(color, "Invalid hex value (please use format #FFFFFF)");
   }
 
-  const { user } = ctx.state;
+  const { user } = ctx.state.auth;
   const collection = await Collection.scope({
     method: ["withMembership", user.id],
   }).findByPk(id);
   authorize(user, "update", collection);
 
-  // we're making this collection have no default access, ensure that the current
-  // user has a read-write membership so that at least they can edit it
-  if (permission !== "read_write" && collection.permission === "read_write") {
+  // we're making this collection have no default access, ensure that the
+  // current user has a read-write membership so that at least they can edit it
+  if (
+    permission !== CollectionPermission.ReadWrite &&
+    collection.permission === CollectionPermission.ReadWrite
+  ) {
     await CollectionUser.findOrCreate({
       where: {
         collectionId: collection.id,
         userId: user.id,
       },
       defaults: {
-        permission: "read_write",
+        permission: CollectionPermission.ReadWrite,
         createdById: user.id,
       },
     });
@@ -592,12 +678,9 @@ router.post("collections.update", auth(), async (ctx) => {
   }
 
   if (permission !== undefined) {
-    // frontend sends empty string
-    assertIn(
-      permission,
-      ["read_write", "read", "", null],
-      "Invalid permission"
-    );
+    if (permission) {
+      assertCollectionPermission(permission);
+    }
     privacyChanged = permission !== collection.permission;
     collection.permission = permission ? permission : null;
   }
@@ -641,8 +724,7 @@ router.post("collections.update", auth(), async (ctx) => {
   // if the privacy level has changed. Otherwise skip this query for speed.
   if (privacyChanged || sharingChanged) {
     await collection.reload();
-    const team = await Team.findByPk(user.teamId);
-    invariant(team, "team not found");
+    const team = await Team.findByPk(user.teamId, { rejectOnEmpty: true });
 
     if (
       collection.permission === null &&
@@ -663,43 +745,51 @@ router.post("collections.update", auth(), async (ctx) => {
   };
 });
 
-router.post("collections.list", auth(), pagination(), async (ctx) => {
-  const { user } = ctx.state;
-  const collectionIds = await user.collectionIds();
-  const where: WhereOptions<Collection> = {
-    teamId: user.teamId,
-    id: collectionIds,
-  };
-  const collections = await Collection.scope({
-    method: ["withMembership", user.id],
-  }).findAll({
-    where,
-    order: [["updatedAt", "DESC"]],
-    offset: ctx.state.pagination.offset,
-    limit: ctx.state.pagination.limit,
-  });
-
-  const nullIndex = collections.findIndex(
-    (collection) => collection.index === null
-  );
-
-  if (nullIndex !== -1) {
-    const indexedCollections = await collectionIndexing(user.teamId);
-    collections.forEach((collection) => {
-      collection.index = indexedCollections[collection.id];
+router.post(
+  "collections.list",
+  auth(),
+  pagination(),
+  async (ctx: APIContext) => {
+    const { user } = ctx.state.auth;
+    const collectionIds = await user.collectionIds();
+    const where: WhereOptions<Collection> = {
+      teamId: user.teamId,
+      id: collectionIds,
+    };
+    const collections = await Collection.scope({
+      method: ["withMembership", user.id],
+    }).findAll({
+      where,
+      order: [
+        Sequelize.literal('"collection"."index" collate "C"'),
+        ["updatedAt", "DESC"],
+      ],
+      offset: ctx.state.pagination.offset,
+      limit: ctx.state.pagination.limit,
     });
+
+    const nullIndex = collections.findIndex(
+      (collection) => collection.index === null
+    );
+
+    if (nullIndex !== -1) {
+      const indexedCollections = await collectionIndexing(user.teamId);
+      collections.forEach((collection) => {
+        collection.index = indexedCollections[collection.id];
+      });
+    }
+
+    ctx.body = {
+      pagination: ctx.state.pagination,
+      data: collections.map(presentCollection),
+      policies: presentPolicies(user, collections),
+    };
   }
+);
 
-  ctx.body = {
-    pagination: ctx.state.pagination,
-    data: collections.map(presentCollection),
-    policies: presentPolicies(user, collections),
-  };
-});
-
-router.post("collections.delete", auth(), async (ctx) => {
-  const { id } = ctx.body;
-  const { user } = ctx.state;
+router.post("collections.delete", auth(), async (ctx: APIContext) => {
+  const { id } = ctx.request.body;
+  const { user } = ctx.state.auth;
   assertUuid(id, "id is required");
 
   const collection = await Collection.scope({
@@ -741,13 +831,13 @@ router.post("collections.delete", auth(), async (ctx) => {
   };
 });
 
-router.post("collections.move", auth(), async (ctx) => {
-  const id = ctx.body.id;
-  let index = ctx.body.index;
+router.post("collections.move", auth(), async (ctx: APIContext) => {
+  const id = ctx.request.body.id;
+  let index = ctx.request.body.index;
   assertPresent(index, "index is required");
   assertIndexCharacters(index);
   assertUuid(id, "id must be a uuid");
-  const { user } = ctx.state;
+  const { user } = ctx.state.auth;
 
   const collection = await Collection.findByPk(id);
   authorize(user, "move", collection);

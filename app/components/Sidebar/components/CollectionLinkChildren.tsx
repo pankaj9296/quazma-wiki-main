@@ -25,7 +25,7 @@ function CollectionLinkChildren({
   expanded,
   prefetchDocument,
 }: Props) {
-  const can = usePolicy(collection.id);
+  const can = usePolicy(collection);
   const { showToast } = useToasts();
   const manualSort = collection.sort.field === "index";
   const { documents } = useStores();
@@ -63,9 +63,8 @@ function CollectionLinkChildren({
 
   return (
     <Folder expanded={expanded}>
-      {isDraggingAnyDocument && can.update && (
+      {isDraggingAnyDocument && can.update && manualSort && (
         <DropCursor
-          disabled={!manualSort}
           isActiveDrop={isOverReorder}
           innerRef={dropToReorder}
           position="top"

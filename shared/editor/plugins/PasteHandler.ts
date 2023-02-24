@@ -1,39 +1,18 @@
 import { toggleMark } from "prosemirror-commands";
 import { Plugin } from "prosemirror-state";
 import { isInTable } from "prosemirror-tables";
+import { isUrl } from "../../utils/urls";
 import Extension from "../lib/Extension";
 import isMarkdown from "../lib/isMarkdown";
-import isUrl from "../lib/isUrl";
-import selectionIsInCode from "../queries/isInCode";
+import normalizePastedMarkdown from "../lib/markdown/normalize";
+import isInCode from "../queries/isInCode";
+import isInList from "../queries/isInList";
 import { LANGUAGES } from "./Prism";
 
 function isDropboxPaper(html: string): boolean {
   // The best we have to detect if a paste is likely coming from Paper
   // In this case it's actually better to use the text version
   return html?.includes("usually-unique-id");
-}
-
-/**
- * Add support for additional syntax that users paste even though it isn't
- * supported by the markdown parser directly by massaging the text content.
- *
- * @param text The incoming pasted plain text
- */
-function normalizePastedMarkdown(text: string): string {
-  const CHECKBOX_REGEX = /^\s?(\[(X|\s|_|-)\]\s(.*)?)/gim;
-
-  // find checkboxes not contained in a list and wrap them in list items
-  while (text.match(CHECKBOX_REGEX)) {
-    text = text.replace(CHECKBOX_REGEX, (match) => `- ${match.trim()}`);
-  }
-
-  // find multiple newlines and insert a hard break to ensure they are respected
-  text = text.replace(/\n{2,}/g, "\n\n\\\n");
-
-  // find single newlines and insert an extra to ensure they are treated as paragraphs
-  text = text.replace(/\b\n\b/g, "\n\n");
-
-  return text;
 }
 
 export default class PasteHandler extends Extension {
@@ -52,11 +31,29 @@ export default class PasteHandler extends Extension {
             }
             return html;
           },
+          handleDOMEvents: {
+            keydown: (_, event) => {
+              if (event.key === "Shift") {
+                this.shiftKey = true;
+              }
+              return false;
+            },
+            keyup: (_, event) => {
+              if (event.key === "Shift") {
+                this.shiftKey = false;
+              }
+              return false;
+            },
+          },
           handlePaste: (view, event: ClipboardEvent) => {
+            // Do nothing if the document isn't currently editable
             if (view.props.editable && !view.props.editable(view.state)) {
               return false;
             }
-            if (!event.clipboardData) {
+
+            // Default behavior if there is nothing on the clipboard or were
+            // special pasting with no formatting (Shift held)
+            if (!event.clipboardData || this.shiftKey) {
               return false;
             }
 
@@ -80,7 +77,12 @@ export default class PasteHandler extends Extension {
               // Is this link embeddable? Create an embed!
               const { embeds } = this.editor.props;
 
-              if (embeds && !isInTable(state)) {
+              if (
+                embeds &&
+                !isInTable(state) &&
+                !isInCode(state) &&
+                !isInList(state)
+              ) {
                 for (const embed of embeds) {
                   const matches = embed.matcher(text);
                   if (matches) {
@@ -107,7 +109,7 @@ export default class PasteHandler extends Extension {
 
             // If the users selection is currently in a code block then paste
             // as plain text, ignore all formatting and HTML content.
-            if (selectionIsInCode(view.state)) {
+            if (isInCode(view.state)) {
               event.preventDefault();
 
               view.dispatch(view.state.tr.insertText(text));
@@ -170,4 +172,7 @@ export default class PasteHandler extends Extension {
       }),
     ];
   }
+
+  /** Tracks whether the Shift key is currently held down */
+  private shiftKey = false;
 }

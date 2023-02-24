@@ -1,9 +1,9 @@
 import nodemailer, { Transporter } from "nodemailer";
+import SMTPTransport from "nodemailer/lib/smtp-transport";
 import Oy from "oy-vey";
-import * as React from "react";
 import env from "@server/env";
 import Logger from "@server/logging/Logger";
-import { APM } from "@server/logging/tracing";
+import { trace } from "@server/logging/tracing";
 import { baseStyles } from "./templates/components/EmailLayout";
 
 const useTestEmailService =
@@ -15,15 +15,15 @@ type SendMailOptions = {
   subject: string;
   previewText?: string;
   text: string;
-  component: React.ReactNode;
+  component: JSX.Element;
   headCSS?: string;
 };
 
 /**
  * Mailer class to send emails.
  */
-@APM.trace({
-  spanName: "mailer",
+@trace({
+  serviceName: "mailer",
 })
 export class Mailer {
   transporter: Transporter | undefined;
@@ -66,7 +66,7 @@ export class Mailer {
     const html = Oy.renderTemplate(data.component, {
       title: data.subject,
       headCSS: [baseStyles, data.headCSS].join(" "),
-      previewText: data.previewText,
+      previewText: data.previewText ?? "",
     });
 
     try {
@@ -78,6 +78,15 @@ export class Mailer {
         subject: data.subject,
         html,
         text: data.text,
+        attachments: env.isCloudHosted()
+          ? undefined
+          : [
+              {
+                filename: "header-logo.png",
+                path: process.cwd() + "/public/email/header-logo.png",
+                cid: "header-image",
+              },
+            ],
       });
 
       if (useTestEmailService) {
@@ -92,8 +101,9 @@ export class Mailer {
     }
   };
 
-  private getOptions() {
+  private getOptions(): SMTPTransport.Options {
     return {
+      name: env.SMTP_NAME,
       host: env.SMTP_HOST,
       port: env.SMTP_PORT,
       secure: env.SMTP_SECURE ?? env.ENVIRONMENT === "production",
@@ -103,15 +113,21 @@ export class Mailer {
             pass: env.SMTP_PASSWORD,
           }
         : undefined,
-      tls: env.SMTP_TLS_CIPHERS
-        ? {
-            ciphers: env.SMTP_TLS_CIPHERS,
-          }
-        : undefined,
+      tls: env.SMTP_SECURE
+        ? env.SMTP_TLS_CIPHERS
+          ? {
+              ciphers: env.SMTP_TLS_CIPHERS,
+            }
+          : undefined
+        : {
+            rejectUnauthorized: false,
+          },
     };
   }
 
-  private async getTestTransportOptions() {
+  private async getTestTransportOptions(): Promise<
+    SMTPTransport.Options | undefined
+  > {
     try {
       const testAccount = await nodemailer.createTestAccount();
       return {
@@ -129,6 +145,4 @@ export class Mailer {
   }
 }
 
-const mailer = new Mailer();
-
-export default mailer;
+export default new Mailer();

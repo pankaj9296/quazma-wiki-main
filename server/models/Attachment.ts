@@ -8,26 +8,39 @@ import {
   IsIn,
   Table,
   DataType,
+  IsNumeric,
 } from "sequelize-typescript";
-import { publicS3Endpoint, deleteFromS3, getFileByKey } from "@server/utils/s3";
+import {
+  publicS3Endpoint,
+  deleteFromS3,
+  getFileByKey,
+  getSignedUrl,
+} from "@server/utils/s3";
 import Document from "./Document";
 import Team from "./Team";
 import User from "./User";
 import IdModel from "./base/IdModel";
 import Fix from "./decorators/Fix";
+import Length from "./validators/Length";
 
 @Table({ tableName: "attachments", modelName: "attachment" })
 @Fix
 class Attachment extends IdModel {
+  @Length({
+    max: 4096,
+    msg: "key must be 4096 characters or less",
+  })
   @Column
   key: string;
 
-  @Column
-  url: string;
-
+  @Length({
+    max: 255,
+    msg: "contentType must be 255 characters or less",
+  })
   @Column
   contentType: string;
 
+  @IsNumeric
   @Column(DataType.BIGINT)
   size: number;
 
@@ -36,30 +49,62 @@ class Attachment extends IdModel {
   @Column
   acl: string;
 
+  @Column
+  lastAccessedAt: Date | null;
+
+  @Column
+  expiresAt: Date | null;
+
   // getters
 
+  /**
+   * Get the original uploaded file name.
+   */
   get name() {
     return path.parse(this.key).base;
   }
 
-  get redirectUrl() {
-    return `/api/attachments.redirect?id=${this.id}`;
-  }
-
+  /**
+   * Whether the attachment is private or not.
+   */
   get isPrivate() {
     return this.acl === "private";
   }
 
-  get buffer() {
+  /**
+   * Get the contents of this attachment as a readable stream.
+   */
+  get stream() {
     return getFileByKey(this.key);
   }
 
   /**
-   * Use this instead of url which will be deleted soon, the column is unneccessary
-   * and was not updated with the migraiton to the new s3 bucket.
+   * Get a url that can be used to download the attachment if the user has a valid session.
+   */
+  get url() {
+    return this.isPrivate ? this.redirectUrl : this.canonicalUrl;
+  }
+
+  /**
+   * Get a url that can be used to download a private attachment if the user has a valid session.
+   */
+  get redirectUrl() {
+    return `/api/attachments.redirect?id=${this.id}`;
+  }
+
+  /**
+   * Get a direct URL to the attachment in storage. Note that this will not work for private attachments,
+   * a signed URL must be used.
    */
   get canonicalUrl() {
-    return `${publicS3Endpoint()}/${this.key}`;
+    return encodeURI(`${publicS3Endpoint()}/${this.key}`);
+  }
+
+  /**
+   * Get a signed URL with the default expirt to download the attachment from storage.
+   */
+  get signedUrl() {
+    return getSignedUrl(this.key);
   }
 
   // hooks

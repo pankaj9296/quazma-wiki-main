@@ -5,10 +5,10 @@ import { useTranslation } from "react-i18next";
 import { MenuButton, useMenuState } from "reakit/Menu";
 import styled from "styled-components";
 import Button from "~/components/Button";
-import CollectionIcon from "~/components/CollectionIcon";
 import ContextMenu from "~/components/ContextMenu";
 import Header from "~/components/ContextMenu/Header";
 import Template from "~/components/ContextMenu/Template";
+import CollectionIcon from "~/components/Icons/CollectionIcon";
 import useCurrentTeam from "~/hooks/useCurrentTeam";
 import usePolicy from "~/hooks/usePolicy";
 import useStores from "~/hooks/useStores";
@@ -22,7 +22,7 @@ function NewTemplateMenu() {
   const { t } = useTranslation();
   const team = useCurrentTeam();
   const { collections, policies } = useStores();
-  const can = usePolicy(team.id);
+  const can = usePolicy(team);
 
   const items = React.useMemo(
     () =>

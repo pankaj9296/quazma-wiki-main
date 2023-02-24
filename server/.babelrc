@@ -13,7 +13,13 @@
   ],
   "plugins": [
     "babel-plugin-transform-typescript-metadata",
-    ["@babel/plugin-proposal-decorators", { "legacy": true }],
+    [
+      "@babel/plugin-proposal-decorators",
+      {
+        "legacy": true
+      }
+    ],
+    "@babel/plugin-proposal-class-properties",
     [
       "transform-inline-environment-variables",
       {
@@ -24,5 +30,19 @@
       }
     ],
     "tsconfig-paths-module-resolver"
-  ]
+  ],
+  "env": {
+    "production": {
+      "ignore": [
+        "**/__mocks__",
+        "**/*.test.ts"
+      ]
+    },
+    "development": {
+      "ignore": [
+        "**/__mocks__",
+        "**/*.test.ts"
+      ]
+    }
+  }
 }

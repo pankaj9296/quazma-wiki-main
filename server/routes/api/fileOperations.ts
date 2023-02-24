@@ -1,116 +1,126 @@
-import invariant from "invariant";
 import Router from "koa-router";
-import { WhereOptions } from "sequelize/types";
+import { WhereOptions } from "sequelize";
+import { FileOperationType } from "@shared/types";
 import fileOperationDeleter from "@server/commands/fileOperationDeleter";
-import { NotFoundError, ValidationError } from "@server/errors";
+import { ValidationError } from "@server/errors";
 import auth from "@server/middlewares/authentication";
 import { FileOperation, Team } from "@server/models";
 import { authorize } from "@server/policies";
 import { presentFileOperation } from "@server/presenters";
+import { APIContext } from "@server/types";
 import { getSignedUrl } from "@server/utils/s3";
-import { assertPresent, assertIn, assertUuid } from "@server/validation";
+import { assertIn, assertSort, assertUuid } from "@server/validation";
 import pagination from "./middlewares/pagination";
 
 const router = new Router();
 
-router.post("fileOperations.info", auth(), async (ctx) => {
-  const { id } = ctx.body;
+router.post(
+  "fileOperations.info",
+  auth({ admin: true }),
+  async (ctx: APIContext) => {
+    const { id } = ctx.request.body;
+    assertUuid(id, "id is required");
+    const { user } = ctx.state.auth;
+    const fileOperation = await FileOperation.findByPk(id, {
+      rejectOnEmpty: true,
+    });
+
+    authorize(user, "read", fileOperation);
+
+    ctx.body = {
+      data: presentFileOperation(fileOperation),
+    };
+  }
+);
+
+router.post(
+  "fileOperations.list",
+  auth({ admin: true }),
+  pagination(),
+  async (ctx: APIContext) => {
+    let { direction } = ctx.request.body;
+    const { sort = "createdAt", type } = ctx.request.body;
+    assertIn(type, Object.values(FileOperationType));
+    assertSort(sort, FileOperation);
+
+    if (direction !== "ASC") {
+      direction = "DESC";
+    }
+    const { user } = ctx.state.auth;
+    const where: WhereOptions<FileOperation> = {
+      teamId: user.teamId,
+      type,
+    };
+    const team = await Team.findByPk(user.teamId);
+    authorize(user, "manage", team);
+
+    const [exports, total] = await Promise.all([
+      FileOperation.findAll({
+        where,
+        order: [[sort, direction]],
+        offset: ctx.state.pagination.offset,
+        limit: ctx.state.pagination.limit,
+      }),
+      FileOperation.count({
+        where,
+      }),
+    ]);
+
+    ctx.body = {
+      pagination: { ...ctx.state.pagination, total },
+      data: exports.map(presentFileOperation),
+    };
+  }
+);
+
+const handleFileOperationsRedirect = async (ctx: APIContext) => {
+  const id = ctx.request.body?.id ?? ctx.request.query?.id;
   assertUuid(id, "id is required");
-  const { user } = ctx.state;
-  const team = await Team.findByPk(user.teamId);
-  const fileOperation = await FileOperation.findByPk(id);
-  invariant(fileOperation, "File operation not found");
 
-  authorize(user, fileOperation.type, team);
+  const { user } = ctx.state.auth;
+  const fileOperation = await FileOperation.unscoped().findByPk(id, {
+    rejectOnEmpty: true,
+  });
+  authorize(user, "read", fileOperation);
 
-  if (!fileOperation) {
-    throw NotFoundError();
+  if (fileOperation.state !== "complete") {
+    throw ValidationError(`${fileOperation.type} is not complete yet`);
   }
 
-  ctx.body = {
-    data: presentFileOperation(fileOperation),
-  };
-});
-
-router.post("fileOperations.list", auth(), pagination(), async (ctx) => {
-  let { direction } = ctx.body;
-  const { sort = "createdAt", type } = ctx.body;
-  assertPresent(type, "type is required");
-  assertIn(
-    type,
-    ["import", "export"],
-    "type must be one of 'import' or 'export'"
-  );
-
-  if (direction !== "ASC") {
-    direction = "DESC";
-  }
-  const { user } = ctx.state;
-  const where: WhereOptions<FileOperation> = {
-    teamId: user.teamId,
-    type,
-  };
-  const team = await Team.findByPk(user.teamId);
-  authorize(user, type, team);
-
-  const [exports, total] = await Promise.all([
-    await FileOperation.findAll({
-      where,
-      order: [[sort, direction]],
-      offset: ctx.state.pagination.offset,
-      limit: ctx.state.pagination.limit,
-    }),
-    await FileOperation.count({
-      where,
-    }),
-  ]);
-
-  ctx.body = {
-    pagination: { ...ctx.state.pagination, total },
-    data: exports.map(presentFileOperation),
-  };
-});
-
-router.post("fileOperations.redirect", auth(), async (ctx) => {
-  const { id } = ctx.body;
-  assertUuid(id, "id is required");
-
-  const { user } = ctx.state;
-  const team = await Team.findByPk(user.teamId);
-  const fileOp = await FileOperation.unscoped().findByPk(id);
-
-  if (!fileOp) {
-    throw NotFoundError();
-  }
-
-  authorize(user, fileOp.type, team);
-
-  if (fileOp.state !== "complete") {
-    throw ValidationError(`${fileOp.type} is not complete yet`);
-  }
-
-  const accessUrl = await getSignedUrl(fileOp.key);
+  const accessUrl = await getSignedUrl(fileOperation.key);
   ctx.redirect(accessUrl);
-});
+};
 
-router.post("fileOperations.delete", auth(), async (ctx) => {
-  const { id } = ctx.body;
-  assertUuid(id, "id is required");
+router.get(
+  "fileOperations.redirect",
+  auth({ admin: true }),
+  handleFileOperationsRedirect
+);
+router.post(
+  "fileOperations.redirect",
+  auth({ admin: true }),
+  handleFileOperationsRedirect
+);
 
-  const { user } = ctx.state;
-  const team = await Team.findByPk(user.teamId);
-  const fileOp = await FileOperation.findByPk(id);
+router.post(
+  "fileOperations.delete",
+  auth({ admin: true }),
+  async (ctx: APIContext) => {
+    const { id } = ctx.request.body;
+    assertUuid(id, "id is required");
 
-  if (!fileOp) {
-    throw NotFoundError();
+    const { user } = ctx.state.auth;
+    const fileOperation = await FileOperation.unscoped().findByPk(id, {
+      rejectOnEmpty: true,
+    });
+    authorize(user, "delete", fileOperation);
+
+    await fileOperationDeleter(fileOperation, user, ctx.request.ip);
+
+    ctx.body = {
+      success: true,
+    };
   }
-
-  authorize(user, fileOp.type, team);
-  await fileOperationDeleter(fileOp, user, ctx.request.ip);
-
-  ctx.body = {
-    success: true,
-  };
-});
+);
 
 export default router;

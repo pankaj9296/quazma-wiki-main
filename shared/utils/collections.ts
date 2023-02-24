@@ -1,4 +1,4 @@
-import { NavigationNode } from "~/types";
+import { NavigationNode } from "@shared/types";
 import naturalSort from "./naturalSort";
 
 type Sort = {
@@ -28,3 +28,16 @@ export const sortNavigationNodes = (
       : document.children,
   }));
 };
+
+export const colorPalette = [
+  "#4E5C6E",
+  "#0366d6",
+  "#9E5CF7",
+  "#FF825C",
+  "#FF5C80",
+  "#FFBE0B",
+  "#42DED1",
+  "#00D084",
+  "#FF4DFA",
+  "#2F362F",
+];

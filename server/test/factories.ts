@@ -1,4 +1,12 @@
+import { isNull } from "lodash";
 import { v4 as uuidv4 } from "uuid";
+import {
+  CollectionPermission,
+  FileOperationState,
+  FileOperationType,
+  IntegrationService,
+  IntegrationType,
+} from "@shared/types";
 import {
   Share,
   Team,
@@ -14,13 +22,25 @@ import {
   Integration,
   AuthenticationProvider,
   FileOperation,
+  WebhookSubscription,
+  WebhookDelivery,
+  ApiKey,
+  Subscription,
 } from "@server/models";
-import {
-  FileOperationState,
-  FileOperationType,
-} from "@server/models/FileOperation";
 
 let count = 1;
+
+export async function buildApiKey(overrides: Partial<ApiKey> = {}) {
+  if (!overrides.userId) {
+    const user = await buildUser();
+    overrides.userId = user.id;
+  }
+
+  return ApiKey.create({
+    name: "My API Key",
+    ...overrides,
+  });
+}
 
 export async function buildShare(overrides: Partial<Share> = {}) {
   if (!overrides.teamId) {
@@ -69,6 +89,31 @@ export async function buildStar(overrides: Partial<Star> = {}) {
 
   return Star.create({
     index: "h",
+    ...overrides,
+  });
+}
+
+export async function buildSubscription(overrides: Partial<Subscription> = {}) {
+  let user;
+
+  if (overrides.userId) {
+    user = await User.findByPk(overrides.userId);
+  } else {
+    user = await buildUser();
+    overrides.userId = user.id;
+  }
+
+  if (!overrides.documentId) {
+    const document = await buildDocument({
+      createdById: overrides.userId,
+      teamId: user?.teamId,
+    });
+    overrides.documentId = document.id;
+  }
+
+  return Subscription.create({
+    enabled: true,
+    event: "documents.update",
     ...overrides,
   });
 }
@@ -133,7 +178,7 @@ export async function buildUser(overrides: Partial<User> = {}) {
     },
   });
   count++;
-  return User.create(
+  const user = await User.create(
     {
       email: `user${count}@example.com`,
       name: `User ${count}`,
@@ -153,10 +198,19 @@ export async function buildUser(overrides: Partial<User> = {}) {
       include: "authentications",
     }
   );
+
+  if (team) {
+    user.team = team;
+  }
+  return user;
 }
 
 export async function buildAdmin(overrides: Partial<User> = {}) {
   return buildUser({ ...overrides, isAdmin: true });
+}
+
+export async function buildViewer(overrides: Partial<User> = {}) {
+  return buildUser({ ...overrides, isViewer: true });
 }
 
 export async function buildInvite(overrides: Partial<User> = {}) {
@@ -173,6 +227,7 @@ export async function buildInvite(overrides: Partial<User> = {}) {
     name: `User ${count}`,
     createdAt: new Date("2018-01-01T00:00:00.000Z"),
     invitedById: actor.id,
+    authentications: [],
     ...overrides,
     lastActiveAt: null,
   });
@@ -188,15 +243,16 @@ export async function buildIntegration(overrides: Partial<Integration> = {}) {
     teamId: overrides.teamId,
   });
   const authentication = await IntegrationAuthentication.create({
-    service: "slack",
+    service: IntegrationService.Slack,
     userId: user.id,
     teamId: user.teamId,
     token: "fake-access-token",
     scopes: ["example", "scopes", "here"],
   });
   return Integration.create({
-    type: "post",
-    service: "slack",
+    service: IntegrationService.Slack,
+    type: IntegrationType.Post,
+    events: ["documents.update", "documents.publish"],
     settings: {
       serviceTeamId: "slack_team_id",
     },
@@ -225,7 +281,7 @@ export async function buildCollection(
     name: `Test Collection ${count}`,
     description: "Test collection description",
     createdById: overrides.userId,
-    permission: "read_write",
+    permission: CollectionPermission.ReadWrite,
     ...overrides,
   });
 }
@@ -275,8 +331,22 @@ export async function buildGroupUser(
   });
 }
 
-export async function buildDocument(
+export async function buildDraftDocument(
   overrides: Partial<Document> & { userId?: string } = {}
+) {
+  return buildDocument({ ...overrides, collectionId: null });
+}
+
+export async function buildDocument(
+  // Omission first, addition later?
+  // This is actually a workaround to allow
+  // passing collectionId as null. Ideally, it
+  // should be updated in the Document model itself
+  // but that'd cascade and require further changes
+  // beyond the scope of what's required now
+  overrides: Omit<Partial<Document>, "collectionId"> & { userId?: string } & {
+    collectionId?: string | null;
+  } = {}
 ) {
   if (!overrides.teamId) {
     const team = await buildTeam();
@@ -288,7 +358,7 @@ export async function buildDocument(
     overrides.userId = user.id;
   }
 
-  if (!overrides.collectionId) {
+  if (overrides.collectionId === undefined) {
     const collection = await buildCollection({
       teamId: overrides.teamId,
       userId: overrides.userId,
@@ -297,14 +367,19 @@ export async function buildDocument(
   }
 
   count++;
-  return Document.create({
-    title: `Document ${count}`,
-    text: "This is the text in an example document",
-    publishedAt: new Date(),
-    lastModifiedById: overrides.userId,
-    createdById: overrides.userId,
-    ...overrides,
-  });
+  return Document.create(
+    {
+      title: `Document ${count}`,
+      text: "This is the text in an example document",
+      publishedAt: isNull(overrides.collectionId) ? null : new Date(),
+      lastModifiedById: overrides.userId,
+      createdById: overrides.userId,
+      ...overrides,
+    },
+    {
+      silent: overrides.createdAt || overrides.updatedAt ? true : false,
+    }
+  );
 }
 
 export async function buildFileOperation(
@@ -357,7 +432,6 @@ export async function buildAttachment(overrides: Partial<Attachment> = {}) {
   count++;
   return Attachment.create({
     key: `uploads/key/to/file ${count}.png`,
-    url: `https://redirect.url.com/uploads/key/to/file ${count}.png`,
     contentType: "image/png",
     size: 100,
     acl: "public-read",
@@ -365,4 +439,59 @@ export async function buildAttachment(overrides: Partial<Attachment> = {}) {
     updatedAt: new Date("2018-01-02T00:00:00.000Z"),
     ...overrides,
   });
+}
+
+export async function buildWebhookSubscription(
+  overrides: Partial<WebhookSubscription> = {}
+): Promise<WebhookSubscription> {
+  if (!overrides.teamId) {
+    const team = await buildTeam();
+    overrides.teamId = team.id;
+  }
+  if (!overrides.createdById) {
+    const user = await buildUser({
+      teamId: overrides.teamId,
+    });
+    overrides.createdById = user.id;
+  }
+  if (!overrides.name) {
+    overrides.name = "Test Webhook Subscription";
+  }
+  if (!overrides.url) {
+    overrides.url = "https://www.example.com/webhook";
+  }
+  if (!overrides.events) {
+    overrides.events = ["*"];
+  }
+  if (!overrides.enabled) {
+    overrides.enabled = true;
+  }
+
+  return WebhookSubscription.create(overrides);
+}
+
+export async function buildWebhookDelivery(
+  overrides: Partial<WebhookDelivery> = {}
+): Promise<WebhookDelivery> {
+  if (!overrides.status) {
+    overrides.status = "success";
+  }
+  if (!overrides.statusCode) {
+    overrides.statusCode = 200;
+  }
+  if (!overrides.requestBody) {
+    overrides.requestBody = "{}";
+  }
+  if (!overrides.requestHeaders) {
+    overrides.requestHeaders = {};
+  }
+  if (!overrides.webhookSubscriptionId) {
+    const webhookSubscription = await buildWebhookSubscription();
+    overrides.webhookSubscriptionId = webhookSubscription.id;
+  }
+  if (!overrides.createdAt) {
+    overrides.createdAt = new Date();
+  }
+
+  return WebhookDelivery.create(overrides);
 }

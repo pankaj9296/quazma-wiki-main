@@ -1,6 +1,7 @@
 import { observer } from "mobx-react";
 import * as React from "react";
 import { useTranslation } from "react-i18next";
+import { mergeRefs } from "react-merge-refs";
 import { useRouteMatch } from "react-router-dom";
 import fullPackage from "@shared/editor/packages/full";
 import Document from "~/models/Document";
@@ -13,12 +14,12 @@ import {
   documentUrl,
   matchDocumentHistory,
 } from "~/utils/routeHelpers";
+import { useDocumentContext } from "../../../components/DocumentContext";
 import MultiplayerEditor from "./AsyncMultiplayerEditor";
 import EditableTitle from "./EditableTitle";
 
 type Props = Omit<EditorProps, "extensions"> & {
   onChangeTitle: (text: string) => void;
-  title: string;
   id: string;
   document: Document;
   isDraft: boolean;
@@ -41,7 +42,6 @@ function DocumentEditor(props: Props, ref: React.RefObject<any>) {
   const match = useRouteMatch();
   const {
     document,
-    title,
     onChangeTitle,
     isDraft,
     shareId,
@@ -51,14 +51,17 @@ function DocumentEditor(props: Props, ref: React.RefObject<any>) {
     ...rest
   } = props;
 
+  const childRef = React.useRef<HTMLDivElement>(null);
   const focusAtStart = React.useCallback(() => {
     if (ref.current) {
       ref.current.focusAtStart();
     }
   }, [ref]);
 
+  // Save document when blurring title, but delay so that if clicking on a
+  // button this is allowed to execute first.
   const handleBlur = React.useCallback(() => {
-    props.onSave({ autosave: true });
+    setTimeout(() => props.onSave({ autosave: true }), 250);
   }, [props]);
 
   const handleGoToNextInput = React.useCallback(
@@ -74,13 +77,15 @@ function DocumentEditor(props: Props, ref: React.RefObject<any>) {
     [focusAtStart, ref]
   );
 
+  const { setEditor } = useDocumentContext();
+  const handleRefChanged = React.useCallback(setEditor, [setEditor]);
+
   const EditorComponent = multiplayer ? MultiplayerEditor : Editor;
 
   return (
     <Flex auto column>
       <EditableTitle
         ref={titleRef}
-        value={title}
         readOnly={readOnly}
         document={document}
         onGoToNextInput={handleGoToNextInput}
@@ -104,17 +109,17 @@ function DocumentEditor(props: Props, ref: React.RefObject<any>) {
         />
       )}
       <EditorComponent
-        ref={ref}
-        autoFocus={!!title && !props.defaultValue}
+        ref={mergeRefs([ref, handleRefChanged])}
+        autoFocus={!!document.title && !props.defaultValue}
         placeholder={t("Type '/' to insert, or start writing…")}
-        scrollTo={window.location.hash}
+        scrollTo={decodeURIComponent(window.location.hash)}
         readOnly={readOnly}
         shareId={shareId}
         extensions={fullPackage}
-        grow
+        bottomPadding={`calc(50vh - ${childRef.current?.offsetHeight || 0}px)`}
         {...rest}
       />
-      {children}
+      <div ref={childRef}>{children}</div>
     </Flex>
   );
 }

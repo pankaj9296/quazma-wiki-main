@@ -1,10 +1,13 @@
 import { subDays } from "date-fns";
 import { Attachment, Document } from "@server/models";
+import DeleteAttachmentTask from "@server/queues/tasks/DeleteAttachmentTask";
 import { buildAttachment, buildDocument } from "@server/test/factories";
-import { flushdb } from "@server/test/support";
+import { setupTestDatabase } from "@server/test/support";
 import documentPermanentDeleter from "./documentPermanentDeleter";
 
-beforeEach(() => flushdb());
+jest.mock("@server/queues/tasks/DeleteAttachmentTask");
+
+setupTestDatabase();
 
 describe("documentPermanentDeleter", () => {
   it("should destroy documents", async () => {
@@ -47,11 +50,15 @@ describe("documentPermanentDeleter", () => {
       teamId: document.teamId,
       documentId: document.id,
     });
+    await buildAttachment({
+      teamId: document.teamId,
+      documentId: document.id,
+    });
     document.text = `![text](${attachment.redirectUrl})`;
     await document.save();
     const countDeletedDoc = await documentPermanentDeleter([document]);
     expect(countDeletedDoc).toEqual(1);
-    expect(await Attachment.count()).toEqual(0);
+    expect(DeleteAttachmentTask.schedule).toHaveBeenCalledTimes(2);
     expect(
       await Document.unscoped().count({
         paranoid: false,

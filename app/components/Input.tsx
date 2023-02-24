@@ -1,10 +1,10 @@
-import { observable } from "mobx";
-import { observer } from "mobx-react";
 import * as React from "react";
 import { VisuallyHidden } from "reakit/VisuallyHidden";
 import styled from "styled-components";
 import breakpoint from "styled-components-breakpoint";
 import Flex from "~/components/Flex";
+import Text from "~/components/Text";
+import { undraggableOnDesktop } from "~/styles";
 
 const RealTextarea = styled.textarea<{ hasIcon?: boolean }>`
   border: 0;
@@ -32,6 +32,7 @@ const RealInput = styled.input<{ hasIcon?: boolean }>`
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  ${undraggableOnDesktop()}
 
   &:disabled,
   &::placeholder {
@@ -58,11 +59,13 @@ const Wrapper = styled.div<{
   flex?: boolean;
   short?: boolean;
   minHeight?: number;
+  minWidth?: number;
   maxHeight?: number;
 }>`
   flex: ${(props) => (props.flex ? "1" : "0")};
   width: ${(props) => (props.short ? "49%" : "auto")};
   max-width: ${(props) => (props.short ? "350px" : "100%")};
+  min-width: ${({ minWidth }) => (minWidth ? `${minWidth}px` : "initial")};
   min-height: ${({ minHeight }) => (minHeight ? `${minHeight}px` : "0")};
   max-height: ${({ maxHeight }) => (maxHeight ? `${maxHeight}px` : "initial")};
 `;
@@ -96,6 +99,9 @@ export const Outline = styled(Flex)<{
   align-items: center;
   overflow: hidden;
   background: ${(props) => props.theme.background};
+
+  /* Prevents an issue where input placeholder appears in a selected style when double clicking title bar */
+  user-select: none;
 `;
 
 export const LabelText = styled.div`
@@ -104,102 +110,110 @@ export const LabelText = styled.div`
   display: inline-block;
 `;
 
-export type Props = Omit<React.HTMLAttributes<HTMLInputElement>, "onChange"> & {
+export type Props = React.InputHTMLAttributes<
+  HTMLInputElement | HTMLTextAreaElement
+> & {
   type?: "text" | "email" | "checkbox" | "search" | "textarea";
-  value?: string;
-  label?: string;
-  className?: string;
   labelHidden?: boolean;
+  label?: string;
   flex?: boolean;
   short?: boolean;
   margin?: string | number;
+  error?: string;
   icon?: React.ReactNode;
-  name?: string;
-  pattern?: string;
-  minLength?: number;
-  maxLength?: number;
-  autoFocus?: boolean;
-  autoComplete?: boolean | string;
-  readOnly?: boolean;
-  required?: boolean;
-  disabled?: boolean;
-  placeholder?: string;
-  onChange?: (
-    ev: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
-  ) => unknown;
-  innerRef?: React.RefObject<HTMLInputElement | HTMLTextAreaElement>;
-  onKeyDown?: (ev: React.KeyboardEvent<HTMLInputElement>) => unknown;
   onFocus?: (ev: React.SyntheticEvent) => unknown;
   onBlur?: (ev: React.SyntheticEvent) => unknown;
 };
 
-@observer
-class Input extends React.Component<Props> {
-  input = this.props.innerRef;
+function Input(
+  props: Props,
+  ref: React.RefObject<HTMLInputElement | HTMLTextAreaElement>
+) {
+  const [focused, setFocused] = React.useState(false);
 
-  @observable
-  focused = false;
+  const handleBlur = (ev: React.SyntheticEvent) => {
+    setFocused(false);
 
-  handleBlur = (ev: React.SyntheticEvent) => {
-    this.focused = false;
-
-    if (this.props.onBlur) {
-      this.props.onBlur(ev);
+    if (props.onBlur) {
+      props.onBlur(ev);
     }
   };
 
-  handleFocus = (ev: React.SyntheticEvent) => {
-    this.focused = true;
+  const handleFocus = (ev: React.SyntheticEvent) => {
+    setFocused(true);
 
-    if (this.props.onFocus) {
-      this.props.onFocus(ev);
+    if (props.onFocus) {
+      props.onFocus(ev);
     }
   };
 
-  render() {
-    const {
-      type = "text",
-      icon,
-      label,
-      margin,
-      className,
-      short,
-      flex,
-      labelHidden,
-      onFocus,
-      onBlur,
-      ...rest
-    } = this.props;
+  const {
+    type = "text",
+    icon,
+    label,
+    margin,
+    error,
+    className,
+    short,
+    flex,
+    labelHidden,
+    onFocus,
+    onBlur,
+    ...rest
+  } = props;
 
-    const InputComponent: React.ComponentType =
-      type === "textarea" ? RealTextarea : RealInput;
-    const wrappedLabel = <LabelText>{label}</LabelText>;
+  const wrappedLabel = <LabelText>{label}</LabelText>;
 
-    return (
-      <Wrapper className={className} short={short} flex={flex}>
-        <label>
-          {label &&
-            (labelHidden ? (
-              <VisuallyHidden>{wrappedLabel}</VisuallyHidden>
-            ) : (
-              wrappedLabel
-            ))}
-          <Outline focused={this.focused} margin={margin}>
-            {icon && <IconWrapper>{icon}</IconWrapper>}
-            <InputComponent
-              // @ts-expect-error no idea why this is not working
-              ref={this.input}
-              onBlur={this.handleBlur}
-              onFocus={this.handleFocus}
+  return (
+    <Wrapper className={className} short={short} flex={flex}>
+      <label>
+        {label &&
+          (labelHidden ? (
+            <VisuallyHidden>{wrappedLabel}</VisuallyHidden>
+          ) : (
+            wrappedLabel
+          ))}
+        <Outline focused={focused} margin={margin}>
+          {icon && <IconWrapper>{icon}</IconWrapper>}
+          {type === "textarea" ? (
+            <RealTextarea
+              ref={ref as React.RefObject<HTMLTextAreaElement>}
+              onBlur={handleBlur}
+              onFocus={handleFocus}
               hasIcon={!!icon}
-              type={type === "textarea" ? undefined : type}
               {...rest}
             />
-          </Outline>
-        </label>
-      </Wrapper>
-    );
-  }
+          ) : (
+            <RealInput
+              ref={ref as React.RefObject<HTMLInputElement>}
+              onBlur={handleBlur}
+              onFocus={handleFocus}
+              hasIcon={!!icon}
+              type={type}
+              {...rest}
+            />
+          )}
+        </Outline>
+      </label>
+      {error && (
+        <TextWrapper>
+          <StyledText type="danger" size="xsmall">
+            {error}
+          </StyledText>
+        </TextWrapper>
+      )}
+    </Wrapper>
+  );
 }
 
-export default Input;
+export const TextWrapper = styled.span`
+  min-height: 16px;
+  display: block;
+  margin-top: -16px;
+`;
+
+export const StyledText = styled(Text)`
+  margin-bottom: 0;
+`;
+
+export default React.forwardRef(Input);

@@ -16,7 +16,6 @@ declare module "styled-components" {
     tableDivider: string;
     tableSelected: string;
     tableSelectedBackground: string;
-    tableHeaderBackground: string;
     quote: string;
     codeBackground: string;
     codeBorder: string;
@@ -69,6 +68,7 @@ declare module "styled-components" {
     smokeLight: string;
     smokeDark: string;
     white: string;
+    white05: string;
     white10: string;
     white50: string;
     white75: string;
@@ -76,7 +76,8 @@ declare module "styled-components" {
     black05: string;
     black10: string;
     black50: string;
-    primary: string;
+    black75: string;
+    accent: string;
     yellow: string;
     warmGrey: string;
     searchHighlight: string;
@@ -95,6 +96,16 @@ declare module "styled-components" {
     };
   }
 
+  interface Breakpoints {
+    breakpoints: {
+      mobile: number;
+      mobileLarge: number;
+      tablet: number;
+      desktop: number;
+      desktopLarge: number;
+    };
+  }
+
   interface Spacing {
     padding: string;
     vpadding: string;
@@ -105,17 +116,25 @@ declare module "styled-components" {
     sidebarMaxWidth: number;
   }
 
-  export interface DefaultTheme extends Colors, Spacing, EditorTheme {
+  export interface DefaultTheme
+    extends Colors,
+      Spacing,
+      Breakpoints,
+      EditorTheme {
     background: string;
     backgroundTransition: string;
-    buttonBackground: string;
-    buttonText: string;
+    accent: string;
+    accentText: string;
     secondaryBackground: string;
     link: string;
     text: string;
     cursor: string;
     textSecondary: string;
     textTertiary: string;
+    textDiffInserted: string;
+    textDiffInsertedBackground: string;
+    textDiffDeleted: string;
+    textDiffDeletedBackground: string;
     placeholder: string;
     sidebarBackground: string;
     sidebarActiveBackground: string;

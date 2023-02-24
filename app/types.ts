@@ -1,7 +1,12 @@
-import { Location } from "history";
-import { TFunction } from "react-i18next";
+import { Location, LocationDescriptor } from "history";
+import { TFunction } from "i18next";
 import RootStore from "~/stores/RootStore";
-import Document from "~/models/Document";
+import Document from "./models/Document";
+import FileOperation from "./models/FileOperation";
+import Pin from "./models/Pin";
+import Star from "./models/Star";
+
+export type PartialWithId<T> = Partial<T> & { id: string };
 
 export type MenuItemButton = {
   type: "button";
@@ -40,7 +45,7 @@ export type MenuHeading = {
 export type MenuInternalLink = {
   type: "route";
   title: React.ReactNode;
-  to: string;
+  to: LocationDescriptor;
   visible?: boolean;
   selected?: boolean;
   disabled?: boolean;
@@ -84,16 +89,18 @@ export type ActionContext = {
 export type Action = {
   type?: undefined;
   id: string;
+  analyticsName?: string;
   name: ((context: ActionContext) => string) | string;
   section: ((context: ActionContext) => string) | string;
   shortcut?: string[];
   keywords?: string;
+  dangerous?: boolean;
   iconInContextMenu?: boolean;
   icon?: React.ReactElement | React.FC;
   placeholder?: ((context: ActionContext) => string) | string;
   selected?: (context: ActionContext) => boolean;
   visible?: (context: ActionContext) => boolean;
-  perform?: (context: ActionContext) => void;
+  perform?: (context: ActionContext) => Promise<any> | any;
   children?: ((context: ActionContext) => Action[]) | Action[];
 };
 
@@ -118,7 +125,7 @@ export type Toast = {
   id: string;
   createdAt: string;
   message: string;
-  type: "warning" | "error" | "info" | "success";
+  type: "warning" | "error" | "info" | "success" | "loading";
   timeout?: number;
   reoccurring?: number;
   action?: {
@@ -132,19 +139,6 @@ export type FetchOptions = {
   revisionId?: string;
   shareId?: string;
   force?: boolean;
-};
-
-export type NavigationNode = {
-  id: string;
-  title: string;
-  url: string;
-  children: NavigationNode[];
-  isDraft?: boolean;
-};
-
-export type CollectionSort = {
-  field: string;
-  direction: "asc" | "desc";
 };
 
 // Pagination response in an API call
@@ -170,10 +164,41 @@ export type SearchResult = {
 };
 
 export type ToastOptions = {
-  type: "warning" | "error" | "info" | "success";
+  type: "warning" | "error" | "info" | "success" | "loading";
   timeout?: number;
   action?: {
     text: string;
     onClick: React.MouseEventHandler<HTMLSpanElement>;
   };
 };
+
+export type WebsocketEntityDeletedEvent = {
+  modelId: string;
+};
+
+export type WebsocketEntitiesEvent = {
+  documentIds: { id: string; updatedAt?: string }[];
+  collectionIds: { id: string; updatedAt?: string }[];
+  groupIds: { id: string; updatedAt?: string }[];
+  teamIds: string[];
+  event: string;
+};
+
+export type WebsocketCollectionUserEvent = {
+  collectionId: string;
+  userId: string;
+};
+
+export type WebsocketCollectionUpdateIndexEvent = {
+  collectionId: string;
+  index: string;
+};
+
+export type WebsocketEvent =
+  | PartialWithId<Pin>
+  | PartialWithId<Star>
+  | PartialWithId<FileOperation>
+  | WebsocketCollectionUserEvent
+  | WebsocketCollectionUpdateIndexEvent
+  | WebsocketEntityDeletedEvent
+  | WebsocketEntitiesEvent;

@@ -6,16 +6,16 @@ import { v4 as uuidv4 } from "uuid";
 import documentImporter from "@server/commands/documentImporter";
 import Logger from "@server/logging/Logger";
 import { FileOperation, User } from "@server/models";
-import { zipAsFileTree, FileTreeNode } from "@server/utils/zip";
+import ZipHelper, { FileTreeNode } from "@server/utils/ZipHelper";
 import ImportTask, { StructuredImportData } from "./ImportTask";
 
 export default class ImportNotionTask extends ImportTask {
   public async parseData(
-    buffer: Buffer,
+    stream: NodeJS.ReadableStream,
     fileOperation: FileOperation
   ): Promise<StructuredImportData> {
-    const zip = await JSZip.loadAsync(buffer);
-    const tree = zipAsFileTree(zip);
+    const zip = await JSZip.loadAsync(stream);
+    const tree = ZipHelper.toFileTree(zip);
     return this.parseFileTree({ fileOperation, zip, tree });
   }
 
@@ -35,10 +35,9 @@ export default class ImportNotionTask extends ImportTask {
     fileOperation: FileOperation;
     tree: FileTreeNode[];
   }): Promise<StructuredImportData> {
-    const user = await User.findByPk(fileOperation.userId);
-    if (!user) {
-      throw new Error("User not found");
-    }
+    const user = await User.findByPk(fileOperation.userId, {
+      rejectOnEmpty: true,
+    });
 
     const output: StructuredImportData = {
       collections: [],
@@ -51,10 +50,6 @@ export default class ImportNotionTask extends ImportTask {
       collectionId: string,
       parentDocumentId?: string
     ): Promise<void> => {
-      if (!user) {
-        throw new Error("User not found");
-      }
-
       await Promise.all(
         children.map(async (child) => {
           // Ignore the CSV's for databases upfront
@@ -82,7 +77,7 @@ export default class ImportNotionTask extends ImportTask {
               name: child.name,
               path: child.path,
               mimeType,
-              buffer: await zipObject.async("nodebuffer"),
+              buffer: () => zipObject.async("nodebuffer"),
               sourceId,
             });
             return;
@@ -139,13 +134,19 @@ export default class ImportNotionTask extends ImportTask {
 
       for (const image of imagesInText) {
         const name = path.basename(image.src);
-        const attachment = output.attachments.find((att) => att.name === name);
+        const attachment = output.attachments.find(
+          (att) =>
+            att.path.endsWith(image.src) ||
+            encodeURI(att.path).endsWith(image.src)
+        );
 
         if (!attachment) {
-          Logger.info(
-            "task",
-            `Could not find referenced attachment with name ${name} and src ${image.src}`
-          );
+          if (!image.src.startsWith("http")) {
+            Logger.info(
+              "task",
+              `Could not find referenced attachment with name ${name} and src ${image.src}`
+            );
+          }
         } else {
           text = text.replace(
             new RegExp(escapeRegExp(image.src), "g"),
@@ -239,7 +240,7 @@ export default class ImportNotionTask extends ImportTask {
     }
 
     for (const collection of output.collections) {
-      if (collection.description) {
+      if (typeof collection.description === "string") {
         collection.description = replaceInternalLinksAndImages(
           collection.description
         );

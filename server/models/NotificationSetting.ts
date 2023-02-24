@@ -11,12 +11,23 @@ import {
   IsIn,
   Default,
   DataType,
+  Scopes,
 } from "sequelize-typescript";
 import env from "@server/env";
 import Team from "./Team";
 import User from "./User";
 import Fix from "./decorators/Fix";
 
+@Scopes(() => ({
+  withUser: {
+    include: [
+      {
+        association: "user",
+        required: true,
+      },
+    ],
+  },
+}))
 @Table({
   tableName: "notification_settings",
   modelName: "notification_setting",
@@ -38,8 +49,10 @@ class NotificationSetting extends Model {
       "documents.publish",
       "documents.update",
       "collections.create",
+      "emails.invite_accepted",
       "emails.onboarding",
       "emails.features",
+      "emails.export_completed",
     ],
   ])
   @Column(DataType.STRING)
@@ -48,12 +61,13 @@ class NotificationSetting extends Model {
   // getters
 
   get unsubscribeUrl() {
-    const token = NotificationSetting.getUnsubscribeToken(this.userId);
-    return `${env.URL}/api/notificationSettings.unsubscribe?token=${token}&id=${this.id}`;
+    return `${env.URL}/api/notificationSettings.unsubscribe?token=${this.unsubscribeToken}&id=${this.id}`;
   }
 
   get unsubscribeToken() {
-    return NotificationSetting.getUnsubscribeToken(this.userId);
+    const hash = crypto.createHash("sha256");
+    hash.update(`${this.userId}-${env.SECRET_KEY}`);
+    return hash.digest("hex");
   }
 
   // associations
@@ -71,12 +85,6 @@ class NotificationSetting extends Model {
   @ForeignKey(() => Team)
   @Column(DataType.UUID)
   teamId: string;
-
-  static getUnsubscribeToken = (userId: string) => {
-    const hash = crypto.createHash("sha256");
-    hash.update(`${userId}-${env.SECRET_KEY}`);
-    return hash.digest("hex");
-  };
 }
 
 export default NotificationSetting;

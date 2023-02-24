@@ -1,5 +1,6 @@
 import ApiKeysStore from "./ApiKeysStore";
 import AuthStore from "./AuthStore";
+import AuthenticationProvidersStore from "./AuthenticationProvidersStore";
 import CollectionGroupMembershipsStore from "./CollectionGroupMembershipsStore";
 import CollectionsStore from "./CollectionsStore";
 import DialogsStore from "./DialogsStore";
@@ -18,14 +19,17 @@ import RevisionsStore from "./RevisionsStore";
 import SearchesStore from "./SearchesStore";
 import SharesStore from "./SharesStore";
 import StarsStore from "./StarsStore";
+import SubscriptionsStore from "./SubscriptionsStore";
 import ToastsStore from "./ToastsStore";
 import UiStore from "./UiStore";
 import UsersStore from "./UsersStore";
 import ViewsStore from "./ViewsStore";
+import WebhookSubscriptionsStore from "./WebhookSubscriptionStore";
 
 export default class RootStore {
   apiKeys: ApiKeysStore;
   auth: AuthStore;
+  authenticationProviders: AuthenticationProvidersStore;
   collections: CollectionsStore;
   collectionGroupMemberships: CollectionGroupMembershipsStore;
   dialogs: DialogsStore;
@@ -44,15 +48,18 @@ export default class RootStore {
   shares: SharesStore;
   ui: UiStore;
   stars: StarsStore;
+  subscriptions: SubscriptionsStore;
   users: UsersStore;
   views: ViewsStore;
   toasts: ToastsStore;
   fileOperations: FileOperationsStore;
+  webhookSubscriptions: WebhookSubscriptionsStore;
 
   constructor() {
     // PoliciesStore must be initialized before AuthStore
     this.policies = new PoliciesStore(this);
     this.apiKeys = new ApiKeysStore(this);
+    this.authenticationProviders = new AuthenticationProvidersStore(this);
     this.auth = new AuthStore(this);
     this.collections = new CollectionsStore(this);
     this.collectionGroupMemberships = new CollectionGroupMembershipsStore(this);
@@ -70,15 +77,18 @@ export default class RootStore {
     this.searches = new SearchesStore(this);
     this.shares = new SharesStore(this);
     this.stars = new StarsStore(this);
+    this.subscriptions = new SubscriptionsStore(this);
     this.ui = new UiStore();
     this.users = new UsersStore(this);
     this.views = new ViewsStore(this);
     this.fileOperations = new FileOperationsStore(this);
     this.toasts = new ToastsStore();
+    this.webhookSubscriptions = new WebhookSubscriptionsStore(this);
   }
 
   logout() {
     this.apiKeys.clear();
+    this.authenticationProviders.clear();
     // this.auth omitted for reasons...
     this.collections.clear();
     this.collectionGroupMemberships.clear();
@@ -96,9 +106,11 @@ export default class RootStore {
     this.searches.clear();
     this.shares.clear();
     this.stars.clear();
+    this.subscriptions.clear();
     this.fileOperations.clear();
     // this.ui omitted to keep ui settings between sessions
     this.users.clear();
     this.views.clear();
+    this.webhookSubscriptions.clear();
   }
 }

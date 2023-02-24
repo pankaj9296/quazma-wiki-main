@@ -1,5 +1,7 @@
 import invariant from "invariant";
-import { Op } from "sequelize";
+import { Op, WhereOptions } from "sequelize";
+import isUUID from "validator/lib/isUUID";
+import { SHARE_URL_SLUG_REGEX } from "@shared/utils/urlHelpers";
 import {
   NotFoundError,
   InvalidRequestError,
@@ -12,19 +14,23 @@ import { authorize, can } from "@server/policies";
 type Props = {
   id?: string;
   shareId?: string;
+  teamId?: string;
   user?: User;
+  includeState?: boolean;
 };
 
 type Result = {
   document: Document;
   share?: Share;
-  collection: Collection;
+  collection?: Collection | null;
 };
 
 export default async function loadDocument({
   id,
   shareId,
+  teamId,
   user,
+  includeState,
 }: Props): Promise<Result> {
   let document;
   let collection;
@@ -34,14 +40,35 @@ export default async function loadDocument({
     throw AuthenticationError(`Authentication or shareId required`);
   }
 
+  const shareUrlId =
+    shareId && !isUUID(shareId) && SHARE_URL_SLUG_REGEX.test(shareId)
+      ? shareId
+      : undefined;
+
+  if (shareUrlId && !teamId) {
+    throw InvalidRequestError(
+      "teamId required for fetching share using shareUrlId"
+    );
+  }
+
   if (shareId) {
-    share = await Share.findOne({
-      where: {
+    let whereClause: WhereOptions<Share> = {
+      revokedAt: {
+        [Op.is]: null,
+      },
+      id: shareId,
+    };
+    if (shareUrlId) {
+      whereClause = {
         revokedAt: {
           [Op.is]: null,
         },
-        id: shareId,
-      },
+        teamId,
+        urlId: shareUrlId,
+      };
+    }
+    share = await Share.findOne({
+      where: whereClause,
       include: [
         {
           // unscoping here allows us to return unpublished documents
@@ -64,7 +91,7 @@ export default async function loadDocument({
       ],
     });
 
-    if (!share || share.document.archivedAt) {
+    if (!share || share.document?.archivedAt) {
       throw InvalidRequestError("Document could not be found for shareId");
     }
 
@@ -97,10 +124,6 @@ export default async function loadDocument({
     const canReadDocument = user && can(user, "read", document);
 
     if (canReadDocument) {
-      await share.update({
-        lastAccessedAt: new Date(),
-      });
-
       // Cannot use document.collection here as it does not include the
       // documentStructure by default through the relationship.
       collection = await Collection.findByPk(document.collectionId);
@@ -133,36 +156,34 @@ export default async function loadDocument({
     // If we're attempting to load a document that isn't the document originally
     // shared then includeChildDocuments must be enabled and the document must
     // still be active and nested within the shared document
-    if (share.document.id !== document.id) {
+    if (share.documentId !== document.id) {
       if (!share.includeChildDocuments) {
         throw AuthorizationError();
       }
 
-      const childDocumentIds = await share.document.getChildDocumentIds({
-        archivedAt: {
-          [Op.is]: null,
-        },
-      });
+      const childDocumentIds =
+        (await share.document?.getChildDocumentIds({
+          archivedAt: {
+            [Op.is]: null,
+          },
+        })) ?? [];
+
       if (!childDocumentIds.includes(document.id)) {
         throw AuthorizationError();
       }
     }
 
     // It is possible to disable sharing at the team level so we must check
-    const team = await Team.findByPk(document.teamId);
-    invariant(team, "team not found");
+    const team = await Team.findByPk(document.teamId, { rejectOnEmpty: true });
 
     if (!team.sharing) {
       throw AuthorizationError();
     }
-
-    await share.update({
-      lastAccessedAt: new Date(),
-    });
   } else {
     document = await Document.findByPk(id as string, {
       userId: user ? user.id : undefined,
       paranoid: false,
+      includeState,
     });
 
     if (!document) {

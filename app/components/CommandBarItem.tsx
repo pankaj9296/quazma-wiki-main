@@ -92,17 +92,20 @@ const Content = styled(Flex)`
 
 const Item = styled.div<{ active?: boolean }>`
   font-size: 15px;
-  padding: 10px 16px;
+  padding: 9px 12px;
+  margin: 0 8px;
+  border-radius: 4px;
   background: ${(props) =>
     props.active ? props.theme.menuItemSelected : "none"};
   display: flex;
   align-items: center;
   justify-content: space-between;
-  cursor: pointer;
+  cursor: var(--pointer);
 
   text-overflow: ellipsis;
   white-space: nowrap;
   overflow: hidden;
+  user-select: none;
   min-width: 0;
 
   ${(props) =>

@@ -1,5 +1,7 @@
+import { LocationDescriptor } from "history";
 import { CheckmarkIcon } from "outline-icons";
 import * as React from "react";
+import { mergeRefs } from "react-merge-refs";
 import { MenuItem as BaseMenuItem } from "reakit/Menu";
 import styled, { css } from "styled-components";
 import breakpoint from "styled-components-breakpoint";
@@ -7,39 +9,42 @@ import MenuIconWrapper from "../MenuIconWrapper";
 
 type Props = {
   onClick?: (event: React.SyntheticEvent) => void | Promise<void>;
+  active?: boolean;
   selected?: boolean;
   disabled?: boolean;
   dangerous?: boolean;
-  to?: string;
+  to?: LocationDescriptor;
   href?: string;
   target?: "_blank";
   as?: string | React.ComponentType<any>;
   hide?: () => void;
   level?: number;
   icon?: React.ReactElement;
+  children?: React.ReactNode;
 };
 
-const MenuItem: React.FC<Props> = ({
-  onClick,
-  children,
-  selected,
-  disabled,
-  as,
-  hide,
-  icon,
-  ...rest
-}) => {
+const MenuItem = (
+  {
+    onClick,
+    children,
+    active,
+    selected,
+    disabled,
+    as,
+    hide,
+    icon,
+    ...rest
+  }: Props,
+  ref: React.Ref<HTMLAnchorElement>
+) => {
   const handleClick = React.useCallback(
     (ev) => {
       if (onClick) {
         ev.preventDefault();
-        ev.stopPropagation();
         onClick(ev);
       }
 
-      if (hide) {
-        hide();
-      }
+      hide?.();
     },
     [onClick, hide]
   );
@@ -62,10 +67,14 @@ const MenuItem: React.FC<Props> = ({
       {(props) => (
         <MenuAnchor
           {...props}
-          $toggleable={selected !== undefined}
+          $active={active}
           as={onClick ? "button" : as}
           onClick={handleClick}
           onMouseDown={handleMouseDown}
+          ref={mergeRefs([
+            ref,
+            props.ref as React.RefObject<HTMLAnchorElement>,
+          ])}
         >
           {selected !== undefined && (
             <>
@@ -96,6 +105,7 @@ type MenuAnchorProps = {
   disabled?: boolean;
   dangerous?: boolean;
   disclosure?: boolean;
+  $active?: boolean;
 };
 
 export const MenuAnchorCSS = css<MenuAnchorProps>`
@@ -103,6 +113,7 @@ export const MenuAnchorCSS = css<MenuAnchorProps>`
   margin: 0;
   border: 0;
   padding: 12px;
+  border-radius: 4px;
   padding-left: ${(props) => 12 + (props.level || 0) * 10}px;
   width: 100%;
   min-height: 32px;
@@ -126,37 +137,52 @@ export const MenuAnchorCSS = css<MenuAnchorProps>`
     opacity: ${(props) => (props.disabled ? ".5" : 1)};
   }
 
-  ${(props) =>
-    props.disabled
-      ? "pointer-events: none;"
-      : `
+  ${(props) => props.disabled && "pointer-events: none;"}
 
+  ${(props) =>
+    props.$active === undefined &&
+    !props.disabled &&
+    `
   @media (hover: hover) {
     &:hover,
     &:focus,
     &.focus-visible {
-      color: ${props.theme.white};
-      background: ${props.dangerous ? props.theme.danger : props.theme.primary};
+      color: ${props.theme.accentText};
+      background: ${props.dangerous ? props.theme.danger : props.theme.accent};
       box-shadow: none;
-      cursor: pointer;
+      cursor: var(--pointer);
 
       svg {
-        fill: ${props.theme.white};
+        fill: ${props.theme.accentText};
       }
     }
   }
-  `};
+  `}
+
+  ${(props) =>
+    props.$active &&
+    !props.disabled &&
+    `
+      color: ${props.theme.accentText};
+      background: ${props.dangerous ? props.theme.danger : props.theme.accent};
+      box-shadow: none;
+      cursor: var(--pointer);
+
+      svg {
+        fill: ${props.theme.accentText};
+      }
+    `}
 
   ${breakpoint("tablet")`
     padding: 4px 12px;
     padding-right: ${(props: MenuAnchorProps) =>
       props.disclosure ? 32 : 12}px;
     font-size: 14px;
-  `};
+  `}
 `;
 
 export const MenuAnchor = styled.a`
   ${MenuAnchorCSS}
 `;
 
-export default MenuItem;
+export default React.forwardRef<HTMLAnchorElement, Props>(MenuItem);

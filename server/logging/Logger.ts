@@ -1,16 +1,18 @@
+import { IncomingMessage } from "http";
 import chalk from "chalk";
 import { isEmpty } from "lodash";
 import winston from "winston";
 import env from "@server/env";
-import Metrics from "@server/logging/metrics";
+import Metrics from "@server/logging/Metrics";
 import Sentry from "@server/logging/sentry";
-import * as Tracing from "./tracing";
+import * as Tracing from "./tracer";
 
 const isProduction = env.ENVIRONMENT === "production";
+const isDev = env.ENVIRONMENT === "development";
 
 type LogCategory =
   | "lifecycle"
-  | "hocuspocus"
+  | "multiplayer"
   | "http"
   | "commands"
   | "worker"
@@ -18,6 +20,7 @@ type LogCategory =
   | "processor"
   | "email"
   | "queue"
+  | "websockets"
   | "database"
   | "utils";
 type Extra = Record<string, any>;
@@ -26,7 +29,9 @@ class Logger {
   output: winston.Logger;
 
   constructor() {
-    this.output = winston.createLogger();
+    this.output = winston.createLogger({
+      level: isDev ? "debug" : "info",
+    });
     this.output.add(
       new winston.transports.Console({
         format: isProduction
@@ -75,7 +80,7 @@ class Logger {
 
     if (env.SENTRY_DSN) {
       Sentry.withScope(function (scope) {
-        scope.setLevel(Sentry.Severity.Warning);
+        scope.setLevel("warning");
 
         for (const key in extra) {
           scope.setExtra(key, extra[key]);
@@ -100,17 +105,31 @@ class Logger {
    * @param message A description of the error
    * @param error The error that occurred
    * @param extra Arbitrary data to be logged that will appear in prod logs
+   * @param request An optional request object to attach to the error
    */
-  error(message: string, error: Error, extra?: Extra) {
-    Metrics.increment("logger.error");
+  error(
+    message: string,
+    error: Error,
+    extra?: Extra,
+    request?: IncomingMessage
+  ) {
+    Metrics.increment("logger.error", {
+      name: error.name,
+    });
     Tracing.setError(error);
 
     if (env.SENTRY_DSN) {
       Sentry.withScope(function (scope) {
-        scope.setLevel(Sentry.Severity.Error);
+        scope.setLevel("error");
 
         for (const key in extra) {
           scope.setExtra(key, extra[key]);
+        }
+
+        if (request) {
+          scope.addEventProcessor(function (event) {
+            return Sentry.Handlers.parseRequest(event, request);
+          });
         }
 
         Sentry.captureException(error);

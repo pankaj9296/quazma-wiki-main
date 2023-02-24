@@ -2,10 +2,12 @@ import fractionalIndex from "fractional-index";
 import { observer } from "mobx-react";
 import * as React from "react";
 import { useDrop, useDrag, DropTargetMonitor } from "react-dnd";
+import { getEmptyImage } from "react-dnd-html5-backend";
 import { useLocation } from "react-router-dom";
 import styled from "styled-components";
 import Collection from "~/models/Collection";
 import Document from "~/models/Document";
+import CollectionIcon from "~/components/Icons/CollectionIcon";
 import usePolicy from "~/hooks/usePolicy";
 import useStores from "~/hooks/useStores";
 import CollectionLink from "./CollectionLink";
@@ -39,7 +41,7 @@ function DraggableCollectionLink({
   const [expanded, setExpanded] = React.useState(
     collection.id === ui.activeCollectionId && !locationStateStarred
   );
-  const can = usePolicy(collection.id);
+  const can = usePolicy(collection);
   const belowCollectionIndex = belowCollection ? belowCollection.index : null;
 
   // Drop to reorder collection
@@ -62,25 +64,27 @@ function DraggableCollectionLink({
     },
     collect: (monitor: DropTargetMonitor<Collection, Collection>) => ({
       isCollectionDropping: monitor.isOver(),
-      isDraggingAnyCollection: monitor.getItemType() === "collection",
+      isDraggingAnyCollection: monitor.canDrop(),
     }),
   });
 
   // Drag to reorder collection
-  const [{ isCollectionDragging }, dragToReorderCollection] = useDrag({
+  const [{ isDragging }, dragToReorderCollection, preview] = useDrag({
     type: "collection",
-    item: () => {
-      return {
-        id: collection.id,
-      };
-    },
-    collect: (monitor) => ({
-      isCollectionDragging: monitor.isDragging(),
+    item: () => ({
+      id: collection.id,
+      title: collection.name,
+      icon: <CollectionIcon collection={collection} />,
     }),
-    canDrag: () => {
-      return can.move;
-    },
+    collect: (monitor) => ({
+      isDragging: monitor.isDragging(),
+    }),
+    canDrag: () => can.move,
   });
+
+  React.useEffect(() => {
+    preview(getEmptyImage(), { captureDraggingState: false });
+  }, [preview]);
 
   // If the current collection is active and relevant to the sidebar section we
   // are in then expand it automatically
@@ -91,18 +95,18 @@ function DraggableCollectionLink({
   }, [collection.id, ui.activeCollectionId, locationStateStarred]);
 
   const handleDisclosureClick = React.useCallback((ev) => {
-    ev.preventDefault();
+    ev?.preventDefault();
     setExpanded((e) => !e);
   }, []);
 
-  const displayChildDocuments = expanded && !isCollectionDragging;
+  const displayChildDocuments = expanded && !isDragging;
 
   return (
     <>
       <Draggable
         key={collection.id}
         ref={dragToReorderCollection}
-        $isDragging={isCollectionDragging}
+        $isDragging={isDragging}
       >
         <CollectionLink
           collection={collection}
@@ -130,7 +134,8 @@ function DraggableCollectionLink({
 }
 
 const Draggable = styled("div")<{ $isDragging: boolean }>`
-  opacity: ${(props) => (props.$isDragging ? 0.5 : 1)};
+  transition: opacity 250ms ease;
+  opacity: ${(props) => (props.$isDragging ? 0.1 : 1)};
   pointer-events: ${(props) => (props.$isDragging ? "none" : "auto")};
 `;
 

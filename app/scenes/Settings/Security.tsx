@@ -1,34 +1,34 @@
 import { debounce } from "lodash";
 import { observer } from "mobx-react";
-import { CloseIcon, PadlockIcon } from "outline-icons";
+import { CheckboxIcon, EmailIcon, PadlockIcon } from "outline-icons";
 import { useState } from "react";
 import * as React from "react";
 import { useTranslation, Trans } from "react-i18next";
-import styled from "styled-components";
-import Button from "~/components/Button";
+import { useTheme } from "styled-components";
+import { TeamPreference } from "@shared/types";
 import ConfirmationDialog from "~/components/ConfirmationDialog";
-import Fade from "~/components/Fade";
 import Flex from "~/components/Flex";
 import Heading from "~/components/Heading";
-import Input from "~/components/Input";
 import InputSelect from "~/components/InputSelect";
-import NudeButton from "~/components/NudeButton";
+import PluginIcon from "~/components/PluginIcon";
 import Scene from "~/components/Scene";
 import Switch from "~/components/Switch";
 import Text from "~/components/Text";
-import Tooltip from "~/components/Tooltip";
 import env from "~/env";
 import useCurrentTeam from "~/hooks/useCurrentTeam";
+import useRequest from "~/hooks/useRequest";
 import useStores from "~/hooks/useStores";
 import useToasts from "~/hooks/useToasts";
 import isCloudHosted from "~/utils/isCloudHosted";
+import DomainManagement from "./components/DomainManagement";
 import SettingRow from "./components/SettingRow";
 
 function Security() {
-  const { auth, dialogs } = useStores();
+  const { auth, authenticationProviders, dialogs } = useStores();
   const team = useCurrentTeam();
   const { t } = useTranslation();
   const { showToast } = useToasts();
+  const theme = useTheme();
   const [data, setData] = useState({
     sharing: team.sharing,
     documentEmbeds: team.documentEmbeds,
@@ -36,10 +36,17 @@ function Security() {
     defaultUserRole: team.defaultUserRole,
     memberCollectionCreate: team.memberCollectionCreate,
     inviteRequired: team.inviteRequired,
-    allowedDomains: team.allowedDomains,
   });
 
-  const authenticationMethods = team.signinMethods;
+  const { data: providers, loading, request } = useRequest(() =>
+    authenticationProviders.fetchPage({})
+  );
+
+  React.useEffect(() => {
+    if (!providers && !loading) {
+      request();
+    }
+  }, [loading, providers, request]);
 
   const showSuccessMessage = React.useMemo(
     () =>
@@ -51,8 +58,6 @@ function Security() {
     [showToast, t]
   );
 
-  const [domainsChanged, setDomainsChanged] = useState(false);
-
   const saveData = React.useCallback(
     async (newData) => {
       try {
@@ -63,8 +68,6 @@ function Security() {
         showToast(err.message, {
           type: "error",
         });
-      } finally {
-        setDomainsChanged(false);
       }
     },
     [auth, showSuccessMessage, showToast]
@@ -84,28 +87,39 @@ function Security() {
     [data, saveData]
   );
 
-  const handleAllowSignupsChange = React.useCallback(
+  const handlePreferenceChange = React.useCallback(
     async (ev: React.ChangeEvent<HTMLInputElement>) => {
-      const inviteRequired = !ev.target.checked;
+      const preferences = {
+        ...team.preferences,
+        [ev.target.id]: ev.target.checked,
+      };
+      await saveData({ preferences });
+    },
+    [saveData, team.preferences]
+  );
+
+  const handleInviteRequiredChange = React.useCallback(
+    async (ev: React.ChangeEvent<HTMLInputElement>) => {
+      const inviteRequired = ev.target.checked;
       const newData = { ...data, inviteRequired };
 
       if (inviteRequired) {
         dialogs.openModal({
           isCentered: true,
-          title: t("Are you sure you want to disable authorized signups?"),
+          title: t("Are you sure you want to require invites?"),
           content: (
             <ConfirmationDialog
               onSubmit={async () => {
                 await saveData(newData);
               }}
-              submitText={t("I’m sure — Disable")}
-              savingText={`${t("Disabling")}…`}
+              submitText={t("I’m sure")}
+              savingText={`${t("Saving")}…`}
               danger
             >
               <Trans
-                defaults="New account creation using <em>{{ authenticationMethods }}</em> will be disabled. New users will need to be invited."
+                defaults="New users will first need to be invited to create an account. <em>Default role</em> and <em>Allowed domains</em> will no longer apply."
                 values={{
-                  authenticationMethods,
+                  authenticationMethods: team.signinMethods,
                 }}
                 components={{
                   em: <strong />,
@@ -119,37 +133,8 @@ function Security() {
 
       await saveData(newData);
     },
-    [data, saveData, t, dialogs, authenticationMethods]
+    [data, saveData, t, dialogs, team.signinMethods]
   );
-
-  const handleRemoveDomain = async (index: number) => {
-    const newData = {
-      ...data,
-    };
-    newData.allowedDomains && newData.allowedDomains.splice(index, 1);
-
-    setData(newData);
-    setDomainsChanged(true);
-  };
-
-  const handleAddDomain = () => {
-    const newData = {
-      ...data,
-      allowedDomains: [...(data.allowedDomains || []), ""],
-    };
-
-    setData(newData);
-  };
-
-  const createOnDomainChangedHandler = (index: number) => (
-    ev: React.ChangeEvent<HTMLInputElement>
-  ) => {
-    const newData = { ...data };
-
-    newData.allowedDomains![index] = ev.currentTarget.value;
-    setData(newData);
-    setDomainsChanged(true);
-  };
 
   return (
     <Scene title={t("Security")} icon={<PadlockIcon color="currentColor" />}>
@@ -161,14 +146,48 @@ function Security() {
         </Trans>
       </Text>
 
+      <h2>{t("Sign In")}</h2>
+      {authenticationProviders.orderedData
+        // filtering unconnected, until we have ability to connect from this screen
+        .filter((provider) => provider.isConnected)
+        .map((provider) => (
+          <SettingRow
+            key={provider.name}
+            label={
+              <Flex gap={8} align="center">
+                <PluginIcon id={provider.name} color="currentColor" />{" "}
+                {provider.displayName}
+              </Flex>
+            }
+            name={provider.name}
+            description={t("Allow members to sign-in with {{ authProvider }}", {
+              authProvider: provider.displayName,
+            })}
+          >
+            <Flex align="center">
+              <CheckboxIcon
+                color={provider.isActive ? theme.accent : undefined}
+                checked={provider.isActive}
+              />{" "}
+              <Text type="secondary">
+                {provider.isActive ? t("Connected") : t("Disabled")}
+              </Text>
+            </Flex>
+          </SettingRow>
+        ))}
       <SettingRow
-        label={t("Allow email authentication")}
+        label={
+          <Flex gap={8} align="center">
+            <EmailIcon color="currentColor" /> {t("Email")}
+          </Flex>
+        }
         name="guestSignin"
         description={
           env.EMAIL_ENABLED
-            ? t("When enabled, users can sign-in using their email address")
+            ? t("Allow members to sign-in using their email address")
             : t("The server must have SMTP configured to enable this setting")
         }
+        border={false}
       >
         <Switch
           id="guestSignin"
@@ -177,14 +196,78 @@ function Security() {
           disabled={!env.EMAIL_ENABLED}
         />
       </SettingRow>
+
+      <h2>{t("Access")}</h2>
+      {isCloudHosted && (
+        <SettingRow
+          label={t("Require invites")}
+          name="inviteRequired"
+          description={t(
+            "Require members to be invited to the workspace before they can create an account using SSO."
+          )}
+        >
+          <Switch
+            id="inviteRequired"
+            checked={data.inviteRequired}
+            onChange={handleInviteRequiredChange}
+          />
+        </SettingRow>
+      )}
+
+      {!data.inviteRequired && (
+        <DomainManagement onSuccess={showSuccessMessage} />
+      )}
+      {!data.inviteRequired && (
+        <SettingRow
+          label={t("Default role")}
+          name="defaultUserRole"
+          description={t(
+            "The default user role for new accounts. Changing this setting does not affect existing user accounts."
+          )}
+          border={false}
+        >
+          <InputSelect
+            id="defaultUserRole"
+            value={data.defaultUserRole}
+            options={[
+              {
+                label: t("Member"),
+                value: "member",
+              },
+              {
+                label: t("Viewer"),
+                value: "viewer",
+              },
+            ]}
+            onChange={handleDefaultRoleChange}
+            ariaLabel={t("Default role")}
+            short
+          />
+        </SettingRow>
+      )}
+
+      <h2>{t("Behavior")}</h2>
       <SettingRow
         label={t("Public document sharing")}
         name="sharing"
         description={t(
-          "When enabled, documents can be shared publicly on the internet by any team member"
+          "When enabled, documents can be shared publicly on the internet by any member of the workspace"
         )}
       >
         <Switch id="sharing" checked={data.sharing} onChange={handleChange} />
+      </SettingRow>
+      <SettingRow
+        label={t("Viewer document exports")}
+        name={TeamPreference.ViewersCanExport}
+        description={t(
+          "When enabled, viewers can see download options for documents"
+        )}
+      >
+        <Switch
+          id={TeamPreference.ViewersCanExport}
+          checked={team.getPreference(TeamPreference.ViewersCanExport, true)}
+          onChange={handlePreferenceChange}
+        />
       </SettingRow>
       <SettingRow
         label={t("Rich service embeds")}
@@ -212,121 +295,8 @@ function Security() {
           onChange={handleChange}
         />
       </SettingRow>
-      {isCloudHosted && (
-        <SettingRow
-          label={t("Allow authorized signups")}
-          name="allowSignups"
-          description={
-            <Trans
-              defaults="Allow authorized <em>{{ authenticationMethods }}</em> users to create new accounts without first receiving an invite"
-              values={{
-                authenticationMethods,
-              }}
-              components={{
-                em: <strong />,
-              }}
-            />
-          }
-        >
-          <Switch
-            id="allowSignups"
-            checked={!data.inviteRequired}
-            onChange={handleAllowSignupsChange}
-          />
-        </SettingRow>
-      )}
-
-      <SettingRow
-        label={t("Default role")}
-        name="defaultUserRole"
-        description={t(
-          "The default user role for new accounts. Changing this setting does not affect existing user accounts."
-        )}
-      >
-        <InputSelect
-          id="defaultUserRole"
-          value={data.defaultUserRole}
-          options={[
-            {
-              label: t("Member"),
-              value: "member",
-            },
-            {
-              label: t("Viewer"),
-              value: "viewer",
-            },
-          ]}
-          onChange={handleDefaultRoleChange}
-          ariaLabel={t("Default role")}
-          short
-        />
-      </SettingRow>
-
-      <SettingRow
-        label={t("Allowed Domains")}
-        name="allowedDomains"
-        description={t(
-          "The domains which should be allowed to create accounts. This applies to both SSO and Email logins. Changing this setting does not affect existing user accounts."
-        )}
-      >
-        {data.allowedDomains &&
-          data.allowedDomains.map((domain, index) => (
-            <Flex key={index} gap={4}>
-              <Input
-                key={index}
-                id={`allowedDomains${index}`}
-                value={domain}
-                autoFocus={!domain}
-                placeholder="example.com"
-                required
-                flex
-                onChange={createOnDomainChangedHandler(index)}
-              />
-              <Remove>
-                <Tooltip tooltip={t("Remove domain")} placement="top">
-                  <NudeButton onClick={() => handleRemoveDomain(index)}>
-                    <CloseIcon />
-                  </NudeButton>
-                </Tooltip>
-              </Remove>
-            </Flex>
-          ))}
-
-        <Flex justify="space-between" gap={4} style={{ flexWrap: "wrap" }}>
-          {!data.allowedDomains?.length ||
-          data.allowedDomains[data.allowedDomains.length - 1] !== "" ? (
-            <Fade>
-              <Button type="button" onClick={handleAddDomain} neutral>
-                {data.allowedDomains?.length ? (
-                  <Trans>Add another</Trans>
-                ) : (
-                  <Trans>Add a domain</Trans>
-                )}
-              </Button>
-            </Fade>
-          ) : (
-            <span />
-          )}
-
-          {domainsChanged && (
-            <Fade>
-              <Button
-                type="button"
-                onClick={handleChange}
-                disabled={auth.isSaving}
-              >
-                <Trans>Save changes</Trans>
-              </Button>
-            </Fade>
-          )}
-        </Flex>
-      </SettingRow>
     </Scene>
   );
 }
-
-const Remove = styled("div")`
-  margin-top: 6px;
-`;
 
 export default observer(Security);

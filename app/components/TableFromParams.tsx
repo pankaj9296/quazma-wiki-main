@@ -1,16 +1,11 @@
+import { observer } from "mobx-react";
 import * as React from "react";
 import { useHistory, useLocation } from "react-router-dom";
 import scrollIntoView from "smooth-scroll-into-view-if-needed";
 import useQuery from "~/hooks/useQuery";
 import type { Props } from "./Table";
 
-const Table = React.lazy(
-  () =>
-    import(
-      /* webpackChunkName: "table" */
-      "~/components/Table"
-    )
-);
+const Table = React.lazy(() => import("~/components/Table"));
 
 const TableFromParams = (
   props: Omit<Props, "onChangeSort" | "onChangePage" | "topRef">
@@ -72,4 +67,4 @@ const TableFromParams = (
   );
 };
 
-export default TableFromParams;
+export default observer(TableFromParams);
