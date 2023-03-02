@@ -9,9 +9,11 @@ pm2 stop WIKI
 
 git pull origin main
 
+yarn install --frozen-lockfile
+
 export NODE_OPTIONS=--max-old-space-size=16384
 
-yarn install --frozen-lockfile && yarn build
+yarn build
 
 yarn sequelize db:migrate
 
