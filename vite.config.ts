@@ -53,8 +53,8 @@ export default () => {
           },
         },
         manifest: {
-          name: "Outline",
-          short_name: "Outline",
+          name: "Quazma Wiki",
+          short_name: "Quazma Wiki",
           theme_color: "#fff",
           background_color: "#fff",
           start_url: "/",
