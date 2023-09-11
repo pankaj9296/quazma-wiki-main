@@ -37,13 +37,10 @@ class UiStore {
   activeDocumentId: string | undefined;
 
   @observable
-  activeCollectionId: string | undefined;
+  activeCollectionId?: string | null;
 
   @observable
   observingUserId: string | undefined;
-
-  @observable
-  commandBarOpenedFromSidebar = false;
 
   @observable
   progressBarVisible = false;
@@ -64,13 +61,16 @@ class UiStore {
   sidebarCollapsed = false;
 
   @observable
-  commentsCollapsed = false;
+  commentsExpanded: string[] = [];
 
   @observable
   sidebarIsResizing = false;
 
   @observable
   multiplayerStatus: ConnectionStatus;
+
+  @observable
+  multiplayerErrorCode?: number;
 
   constructor() {
     // Rehydrate
@@ -98,8 +98,9 @@ class UiStore {
     this.sidebarCollapsed = !!data.sidebarCollapsed;
     this.sidebarWidth = data.sidebarWidth || defaultTheme.sidebarWidth;
     this.sidebarRightWidth =
-      data.sidebarRightWidth || defaultTheme.sidebarWidth;
+      data.sidebarRightWidth || defaultTheme.sidebarRightWidth;
     this.tocVisible = !!data.tocVisible;
+    this.commentsExpanded = data.commentsExpanded || [];
     this.theme = data.theme || Theme.System;
 
     autorun(() => {
@@ -135,8 +136,12 @@ class UiStore {
   };
 
   @action
-  setMultiplayerStatus = (status: ConnectionStatus): void => {
+  setMultiplayerStatus = (
+    status: ConnectionStatus,
+    errorCode?: number
+  ): void => {
     this.multiplayerStatus = status;
+    this.multiplayerErrorCode = errorCode;
   };
 
   @action
@@ -166,6 +171,11 @@ class UiStore {
   };
 
   @action
+  setRightSidebarWidth = (width: number): void => {
+    this.sidebarRightWidth = width;
+  };
+
+  @action
   collapseSidebar = () => {
     this.sidebarCollapsed = true;
   };
@@ -177,18 +187,26 @@ class UiStore {
   };
 
   @action
-  collapseComments = () => {
-    this.commentsCollapsed = true;
+  collapseComments = (documentId: string) => {
+    this.commentsExpanded = this.commentsExpanded.filter(
+      (id) => id !== documentId
+    );
   };
 
   @action
-  expandComments = () => {
-    this.commentsCollapsed = false;
+  expandComments = (documentId: string) => {
+    if (!this.commentsExpanded.includes(documentId)) {
+      this.commentsExpanded.push(documentId);
+    }
   };
 
   @action
-  toggleComments = () => {
-    this.commentsCollapsed = !this.commentsCollapsed;
+  toggleComments = (documentId: string) => {
+    if (this.commentsExpanded.includes(documentId)) {
+      this.collapseComments(documentId);
+    } else {
+      this.expandComments(documentId);
+    }
   };
 
   @action
@@ -223,16 +241,6 @@ class UiStore {
   };
 
   @action
-  commandBarOpened = () => {
-    this.commandBarOpenedFromSidebar = true;
-  };
-
-  @action
-  commandBarClosed = () => {
-    this.commandBarOpenedFromSidebar = false;
-  };
-
-  @action
   hideMobileSidebar = () => {
     this.mobileSidebarVisible = false;
   };
@@ -264,6 +272,7 @@ class UiStore {
       sidebarWidth: this.sidebarWidth,
       sidebarRightWidth: this.sidebarRightWidth,
       languagePromptDismissed: this.languagePromptDismissed,
+      commentsExpanded: this.commentsExpanded,
       theme: this.theme,
     };
   }

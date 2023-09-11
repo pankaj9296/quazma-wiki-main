@@ -1,14 +1,15 @@
 import invariant from "invariant";
-import { filter, orderBy } from "lodash";
+import filter from "lodash/filter";
+import orderBy from "lodash/orderBy";
 import { action, runInAction, computed } from "mobx";
 import Comment from "~/models/Comment";
 import Document from "~/models/Document";
 import { PaginationParams } from "~/types";
 import { client } from "~/utils/ApiClient";
-import BaseStore from "./BaseStore";
 import RootStore from "./RootStore";
+import Store from "./base/Store";
 
-export default class CommentsStore extends BaseStore<Comment> {
+export default class CommentsStore extends Store<Comment> {
   apiEndpoint = "comments";
 
   constructor(rootStore: RootStore) {
@@ -38,8 +39,7 @@ export default class CommentsStore extends BaseStore<Comment> {
     return filter(
       this.orderedData,
       (comment) =>
-        comment.parentCommentId === threadId ||
-        (comment.id === threadId && !comment.isNew)
+        comment.parentCommentId === threadId || comment.id === threadId
     );
   }
 

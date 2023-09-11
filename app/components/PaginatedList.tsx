@@ -1,12 +1,12 @@
-import { isEqual } from "lodash";
+import isEqual from "lodash/isEqual";
 import { observable, action } from "mobx";
 import { observer } from "mobx-react";
 import * as React from "react";
 import { withTranslation, WithTranslation } from "react-i18next";
 import { Waypoint } from "react-waypoint";
 import { CompositeStateReturn } from "reakit/Composite";
-import { DEFAULT_PAGINATION_LIMIT } from "~/stores/BaseStore";
 import RootStore from "~/stores/RootStore";
+import { DEFAULT_PAGINATION_LIMIT } from "~/stores/base/Store";
 import ArrowKeyNavigation from "~/components/ArrowKeyNavigation";
 import DelayedMount from "~/components/DelayedMount";
 import PlaceholderList from "~/components/List/Placeholder";
@@ -70,7 +70,7 @@ class PaginatedList<T extends PaginatedItem> extends React.Component<Props<T>> {
   allowLoadMore = true;
 
   componentDidMount() {
-    this.fetchResults();
+    void this.fetchResults();
   }
 
   componentDidUpdate(prevProps: Props<T>) {
@@ -79,7 +79,7 @@ class PaginatedList<T extends PaginatedItem> extends React.Component<Props<T>> {
       !isEqual(prevProps.options, this.props.options)
     ) {
       this.reset();
-      this.fetchResults();
+      void this.fetchResults();
     }
   }
 

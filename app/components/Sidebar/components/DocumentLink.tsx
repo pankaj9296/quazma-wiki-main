@@ -67,27 +67,29 @@ function InnerDocumentLink(
 
   React.useEffect(() => {
     if (isActiveDocument && hasChildDocuments) {
-      fetchChildDocuments(node.id);
+      void fetchChildDocuments(node.id);
     }
-  }, [fetchChildDocuments, node, hasChildDocuments, isActiveDocument]);
+  }, [fetchChildDocuments, node.id, hasChildDocuments, isActiveDocument]);
 
   const pathToNode = React.useMemo(
     () => collection?.pathToDocument(node.id).map((entry) => entry.id),
     [collection, node]
   );
 
-  const showChildren = React.useMemo(() => {
-    return !!(
-      hasChildDocuments &&
-      activeDocument &&
-      collection &&
-      (collection
-        .pathToDocument(activeDocument.id)
-        .map((entry) => entry.id)
-        .includes(node.id) ||
-        isActiveDocument)
-    );
-  }, [hasChildDocuments, activeDocument, isActiveDocument, node, collection]);
+  const showChildren = React.useMemo(
+    () =>
+      !!(
+        hasChildDocuments &&
+        activeDocument &&
+        collection &&
+        (collection
+          .pathToDocument(activeDocument.id)
+          .map((entry) => entry.id)
+          .includes(node.id) ||
+          isActiveDocument)
+      ),
+    [hasChildDocuments, activeDocument, isActiveDocument, node, collection]
+  );
 
   const [expanded, setExpanded] = React.useState(showChildren);
 
@@ -112,8 +114,8 @@ function InnerDocumentLink(
     [expanded]
   );
 
-  const handleMouseEnter = React.useCallback(() => {
-    prefetchDocument?.(node.id);
+  const handlePrefetch = React.useCallback(() => {
+    void prefetchDocument?.(node.id);
   }, [prefetchDocument, node]);
 
   const handleTitleChange = React.useCallback(
@@ -121,16 +123,10 @@ function InnerDocumentLink(
       if (!document) {
         return;
       }
-      await documents.update(
-        {
-          id: document.id,
-          text: document.text,
-          title,
-        },
-        {
-          lastRevision: document.revision,
-        }
-      );
+      await documents.update({
+        id: document.id,
+        title,
+      });
     },
     [documents, document]
   );
@@ -245,11 +241,11 @@ function InnerDocumentLink(
       }
 
       if (expanded) {
-        documents.move(item.id, collection.id, node.id, 0);
+        void documents.move(item.id, collection.id, node.id, 0);
         return;
       }
 
-      documents.move(item.id, collection.id, parentId, index + 1);
+      void documents.move(item.id, collection.id, parentId, index + 1);
     },
     collect: (monitor) => ({
       isOverReorder: monitor.isOver(),
@@ -320,7 +316,7 @@ function InnerDocumentLink(
               <SidebarLink
                 expanded={hasChildren ? isExpanded : undefined}
                 onDisclosureClick={handleDisclosureClick}
-                onMouseEnter={handleMouseEnter}
+                onClickIntent={handlePrefetch}
                 to={{
                   pathname: node.url,
                   state: {
@@ -328,6 +324,7 @@ function InnerDocumentLink(
                     starred: inStarredSection,
                   },
                 }}
+                emoji={document?.emoji || node.emoji}
                 label={
                   <EditableTitle
                     title={title}
@@ -338,7 +335,9 @@ function InnerDocumentLink(
                   />
                 }
                 isActive={(match, location: Location<{ starred?: boolean }>) =>
-                  !!match && location.state?.starred === inStarredSection
+                  ((document && location.pathname.endsWith(document.urlId)) ||
+                    !!match) &&
+                  location.state?.starred === inStarredSection
                 }
                 isActiveDrop={isOverReparent && canDropToReparent}
                 depth={depth}

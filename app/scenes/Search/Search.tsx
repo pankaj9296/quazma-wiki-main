@@ -1,4 +1,4 @@
-import { isEqual } from "lodash";
+import isEqual from "lodash/isEqual";
 import { observable, action } from "mobx";
 import { observer } from "mobx-react";
 import queryString from "query-string";
@@ -10,9 +10,9 @@ import styled from "styled-components";
 import breakpoint from "styled-components-breakpoint";
 import { v4 as uuidv4 } from "uuid";
 import { DateFilter as TDateFilter } from "@shared/types";
-import { DEFAULT_PAGINATION_LIMIT } from "~/stores/BaseStore";
 import { SearchParams } from "~/stores/DocumentsStore";
 import RootStore from "~/stores/RootStore";
+import { DEFAULT_PAGINATION_LIMIT } from "~/stores/base/Store";
 import ArrowKeyNavigation from "~/components/ArrowKeyNavigation";
 import DocumentListItem from "~/components/DocumentListItem";
 import Empty from "~/components/Empty";
@@ -24,6 +24,7 @@ import Scene from "~/components/Scene";
 import Switch from "~/components/Switch";
 import Text from "~/components/Text";
 import withStores from "~/components/withStores";
+import { hover } from "~/styles";
 import Logger from "~/utils/Logger";
 import { searchPath } from "~/utils/routeHelpers";
 import { decodeURIComponentSafe } from "~/utils/urls";
@@ -93,7 +94,7 @@ class Search extends React.Component<Props> {
   handleKeyDown = (ev: React.KeyboardEvent<HTMLInputElement>) => {
     if (ev.key === "Enter") {
       this.updateLocation(ev.currentTarget.value);
-      this.fetchResults();
+      void this.fetchResults();
       return;
     }
 
@@ -142,7 +143,7 @@ class Search extends React.Component<Props> {
     this.allowLoadMore = true;
     // To prevent "no results" showing before debounce kicks in
     this.isLoading = true;
-    this.fetchResults();
+    void this.fetchResults();
   };
 
   handleTermChange = () => {
@@ -152,7 +153,7 @@ class Search extends React.Component<Props> {
     this.allowLoadMore = true;
     // To prevent "no results" showing before debounce kicks in
     this.isLoading = true;
-    this.fetchResults();
+    void this.fetchResults();
   };
 
   handleFilterChange = (search: {
@@ -453,7 +454,7 @@ const Filters = styled(Flex)`
     padding: 0;
   `};
 
-  &:hover {
+  &: ${hover} {
     opacity: 1;
   }
 `;
@@ -463,7 +464,7 @@ const SearchTitlesFilter = styled(Switch)`
   margin-left: 8px;
   margin-top: 2px;
   font-size: 14px;
-  font-weight: 500;
+  font-weight: 400;
 `;
 
 export default withTranslation()(withStores(withRouter(Search)));

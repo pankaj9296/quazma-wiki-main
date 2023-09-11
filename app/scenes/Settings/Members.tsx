@@ -1,11 +1,11 @@
-import { sortBy } from "lodash";
+import sortBy from "lodash/sortBy";
 import { observer } from "mobx-react";
 import { PlusIcon, UserIcon } from "outline-icons";
 import * as React from "react";
 import { Trans, useTranslation } from "react-i18next";
 import { useHistory, useLocation } from "react-router-dom";
 import styled from "styled-components";
-import { PAGINATION_SYMBOL } from "~/stores/BaseStore";
+import { PAGINATION_SYMBOL } from "~/stores/base/Store";
 import User from "~/models/User";
 import Invite from "~/scenes/Invite";
 import { Action } from "~/components/Actions";
@@ -28,11 +28,8 @@ import UserStatusFilter from "./components/UserStatusFilter";
 function Members() {
   const location = useLocation();
   const history = useHistory();
-  const [
-    inviteModalOpen,
-    handleInviteModalOpen,
-    handleInviteModalClose,
-  ] = useBoolean();
+  const [inviteModalOpen, handleInviteModalOpen, handleInviteModalClose] =
+    useBoolean();
   const team = useCurrentTeam();
   const { users } = useStores();
   const { t } = useTranslation();
@@ -42,8 +39,8 @@ function Members() {
   const [totalPages, setTotalPages] = React.useState(0);
   const [userIds, setUserIds] = React.useState<string[]>([]);
   const can = usePolicy(team);
-  const query = params.get("query") || "";
-  const filter = params.get("filter") || "";
+  const query = params.get("query") || undefined;
+  const filter = params.get("filter") || undefined;
   const sort = params.get("sort") || "name";
   const direction = (params.get("direction") || "asc").toUpperCase() as
     | "ASC"
@@ -71,7 +68,7 @@ function Members() {
       }
     };
 
-    fetchData();
+    void fetchData();
   }, [query, sort, filter, page, direction, users, users.counts.all]);
 
   React.useEffect(() => {
@@ -148,7 +145,7 @@ function Members() {
   return (
     <Scene
       title={t("Members")}
-      icon={<UserIcon color="currentColor" />}
+      icon={<UserIcon />}
       actions={
         <>
           {can.inviteUser && (
@@ -179,15 +176,18 @@ function Members() {
       <Flex gap={8}>
         <InputSearch
           short
-          value={query}
+          value={query ?? ""}
           placeholder={`${t("Filter")}…`}
           onChange={handleSearch}
         />
-        <LargeUserStatusFilter activeKey={filter} onSelect={handleFilter} />
+        <LargeUserStatusFilter
+          activeKey={filter ?? ""}
+          onSelect={handleFilter}
+        />
       </Flex>
       <PeopleTable
         data={data}
-        canManage={can.manage}
+        canManage={can.update}
         isLoading={isLoading}
         page={page}
         pageSize={limit}

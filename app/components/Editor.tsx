@@ -1,5 +1,6 @@
-import { formatDistanceToNow } from "date-fns";
-import { deburr, difference, sortBy } from "lodash";
+import deburr from "lodash/deburr";
+import difference from "lodash/difference";
+import sortBy from "lodash/sortBy";
 import { observer } from "mobx-react";
 import { DOMParser as ProsemirrorDOMParser } from "prosemirror-model";
 import { TextSelection } from "prosemirror-state";
@@ -10,6 +11,7 @@ import { Optional } from "utility-types";
 import insertFiles from "@shared/editor/commands/insertFiles";
 import { AttachmentPreset } from "@shared/types";
 import { Heading } from "@shared/utils/ProsemirrorHelper";
+import { dateLocale, dateToRelative } from "@shared/utils/date";
 import { getDataTransferFiles } from "@shared/utils/files";
 import parseDocumentSlug from "@shared/utils/parseDocumentSlug";
 import { isInternalUrl } from "@shared/utils/urls";
@@ -23,14 +25,16 @@ import useDictionary from "~/hooks/useDictionary";
 import useEmbeds from "~/hooks/useEmbeds";
 import useStores from "~/hooks/useStores";
 import useToasts from "~/hooks/useToasts";
+import useUserLocale from "~/hooks/useUserLocale";
 import { NotFoundError } from "~/utils/errors";
 import { uploadFile } from "~/utils/files";
 import { isModKey } from "~/utils/keyboard";
+import lazyWithRetry from "~/utils/lazyWithRetry";
 import { sharedDocumentPath } from "~/utils/routeHelpers";
 import { isHash } from "~/utils/urls";
 import DocumentBreadcrumb from "./DocumentBreadcrumb";
 
-const LazyLoadedEditor = React.lazy(() => import("~/editor"));
+const LazyLoadedEditor = lazyWithRetry(() => import("~/editor"));
 
 export type Props = Optional<
   EditorProps,
@@ -44,10 +48,11 @@ export type Props = Optional<
 > & {
   shareId?: string | undefined;
   embedsDisabled?: boolean;
+  previewsDisabled?: boolean;
   onHeadingsChange?: (headings: Heading[]) => void;
   onSynced?: () => Promise<void>;
   onPublish?: (event: React.MouseEvent) => any;
-  bottomPadding?: string;
+  editorStyle?: React.CSSProperties;
 };
 
 function Editor(props: Props, ref: React.RefObject<SharedEditor> | null) {
@@ -58,7 +63,10 @@ function Editor(props: Props, ref: React.RefObject<SharedEditor> | null) {
     onHeadingsChange,
     onCreateCommentMark,
     onDeleteCommentMark,
+    previewsDisabled,
   } = props;
+  const userLocale = useUserLocale();
+  const locale = dateLocale(userLocale);
   const { auth, comments, documents } = useStores();
   const { showToast } = useToasts();
   const dictionary = useDictionary();
@@ -67,10 +75,8 @@ function Editor(props: Props, ref: React.RefObject<SharedEditor> | null) {
   const localRef = React.useRef<SharedEditor>();
   const preferences = auth.user?.preferences;
   const previousHeadings = React.useRef<Heading[] | null>(null);
-  const [
-    activeLinkElement,
-    setActiveLink,
-  ] = React.useState<HTMLAnchorElement | null>(null);
+  const [activeLinkElement, setActiveLink] =
+    React.useState<HTMLAnchorElement | null>(null);
   const previousCommentIds = React.useRef<string[]>();
 
   const handleLinkActive = React.useCallback((element: HTMLAnchorElement) => {
@@ -93,8 +99,10 @@ function Editor(props: Props, ref: React.RefObject<SharedEditor> | null) {
 
         try {
           const document = await documents.fetch(slug);
-          const time = formatDistanceToNow(Date.parse(document.updatedAt), {
+          const time = dateToRelative(Date.parse(document.updatedAt), {
             addSuffix: true,
+            shorten: true,
+            locale,
           });
 
           return [
@@ -116,13 +124,11 @@ function Editor(props: Props, ref: React.RefObject<SharedEditor> | null) {
       const results = await documents.searchTitles(term);
 
       return sortBy(
-        results.map((document: Document) => {
-          return {
-            title: document.title,
-            subtitle: <DocumentBreadcrumb document={document} onlyText />,
-            url: document.url,
-          };
-        }),
+        results.map((document: Document) => ({
+          title: document.title,
+          subtitle: <DocumentBreadcrumb document={document} onlyText />,
+          url: document.url,
+        })),
         (document) =>
           deburr(document.title)
             .toLowerCase()
@@ -325,7 +331,7 @@ function Editor(props: Props, ref: React.RefObject<SharedEditor> | null) {
   );
 
   return (
-    <ErrorBoundary reloadOnChunkMissing>
+    <ErrorBoundary component="div" reloadOnChunkMissing>
       <>
         <LazyLoadedEditor
           ref={mergeRefs([ref, localRef, handleRefChanged])}
@@ -335,19 +341,19 @@ function Editor(props: Props, ref: React.RefObject<SharedEditor> | null) {
           userPreferences={preferences}
           dictionary={dictionary}
           {...props}
-          onHoverLink={handleLinkActive}
+          onHoverLink={previewsDisabled ? undefined : handleLinkActive}
           onClickLink={handleClickLink}
           onSearchLink={handleSearchLink}
           onChange={handleChange}
           placeholder={props.placeholder || ""}
           defaultValue={props.defaultValue || ""}
         />
-        {props.bottomPadding && !props.readOnly && (
+        {props.editorStyle?.paddingBottom && !props.readOnly && (
           <ClickablePadding
             onClick={focusAtEnd}
             onDrop={handleDrop}
             onDragOver={handleDragOver}
-            minHeight={props.bottomPadding}
+            minHeight={props.editorStyle.paddingBottom}
           />
         )}
         {activeLinkElement && !shareId && (

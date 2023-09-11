@@ -76,7 +76,7 @@ export type AttachmentEvent = BaseEvent &
         modelId: string;
         data: {
           name: string;
-          source: string;
+          source?: "import";
         };
       }
     | {
@@ -215,10 +215,15 @@ export type CollectionEvent = BaseEvent &
     | CollectionUserEvent
     | CollectionGroupEvent
     | {
-        name:
-          | "collections.create"
-          | "collections.update"
-          | "collections.delete";
+        name: "collections.create";
+        collectionId: string;
+        data: {
+          name: string;
+          source?: "import";
+        };
+      }
+    | {
+        name: "collections.update" | "collections.delete";
         collectionId: string;
         data: {
           name: string;
@@ -279,12 +284,31 @@ export type PinEvent = BaseEvent & {
   collectionId?: string;
 };
 
-export type CommentEvent = BaseEvent & {
-  name: "comments.create" | "comments.update" | "comments.delete";
+export type CommentUpdateEvent = BaseEvent & {
+  name: "comments.update";
   modelId: string;
   documentId: string;
   actorId: string;
+  data: {
+    newMentionIds: string[];
+  };
 };
+
+export type CommentEvent =
+  | (BaseEvent & {
+      name: "comments.create";
+      modelId: string;
+      documentId: string;
+      actorId: string;
+    })
+  | CommentUpdateEvent
+  | (BaseEvent & {
+      name: "comments.delete";
+      modelId: string;
+      documentId: string;
+      actorId: string;
+      collectionId: string;
+    });
 
 export type StarEvent = BaseEvent & {
   name: "stars.create" | "stars.update" | "stars.delete";
@@ -333,6 +357,14 @@ export type WebhookSubscriptionEvent = BaseEvent & {
   };
 };
 
+export type NotificationEvent = BaseEvent & {
+  name: "notifications.create" | "notifications.update";
+  modelId: string;
+  teamId: string;
+  userId: string;
+  documentId?: string;
+};
+
 export type Event =
   | ApiKeyEvent
   | AttachmentEvent
@@ -351,7 +383,8 @@ export type Event =
   | TeamEvent
   | UserEvent
   | ViewEvent
-  | WebhookSubscriptionEvent;
+  | WebhookSubscriptionEvent
+  | NotificationEvent;
 
 export type NotificationMetadata = {
   notificationId?: string;
@@ -412,4 +445,8 @@ export type CollectionJSONExport = {
   attachments: {
     [id: string]: AttachmentJSONExport;
   };
+};
+
+export type UnfurlResolver = {
+  unfurl: (url: string) => Promise<any>;
 };

@@ -1,4 +1,8 @@
-export type Role = "admin" | "viewer" | "member";
+export enum UserRole {
+  Admin = "admin",
+  Member = "member",
+  Viewer = "viewer",
+}
 
 export type DateFilter = "day" | "week" | "month" | "year";
 
@@ -34,20 +38,22 @@ export enum FileOperationState {
   Expired = "expired",
 }
 
+export enum MentionType {
+  User = "user",
+}
+
 export type PublicEnv = {
   URL: string;
   CDN_URL: string;
   COLLABORATION_URL: string;
   AWS_S3_UPLOAD_BUCKET_URL: string;
   AWS_S3_ACCELERATE_URL: string;
-  DEPLOYMENT: string | undefined;
   ENVIRONMENT: string;
   SENTRY_DSN: string | undefined;
   SENTRY_TUNNEL: string | undefined;
   SLACK_CLIENT_ID: string | undefined;
   SLACK_APP_ID: string | undefined;
   MAXIMUM_IMPORT_SIZE: number;
-  SUBDOMAINS_ENABLED: boolean;
   EMAIL_ENABLED: boolean;
   PDF_EXPORT_ENABLED: boolean;
   DEFAULT_LANGUAGE: string;
@@ -75,6 +81,7 @@ export enum IntegrationType {
 
 export enum IntegrationService {
   Diagrams = "diagrams",
+  Grist = "grist",
   Slack = "slack",
   GoogleAnalytics = "google-analytics",
 }
@@ -82,6 +89,7 @@ export enum IntegrationService {
 export enum CollectionPermission {
   Read = "read",
   ReadWrite = "read_write",
+  Admin = "admin",
 }
 
 export type IntegrationSettings<T> = T extends IntegrationType.Embed
@@ -90,20 +98,24 @@ export type IntegrationSettings<T> = T extends IntegrationType.Embed
   ? { measurementId: string }
   : T extends IntegrationType.Post
   ? { url: string; channel: string; channelId: string }
-  : T extends IntegrationType.Post
+  : T extends IntegrationType.Command
   ? { serviceTeamId: string }
   :
       | { url: string }
       | { url: string; channel: string; channelId: string }
       | { serviceTeamId: string }
-      | { measurementId: string };
+      | { measurementId: string }
+      | undefined;
 
 export enum UserPreference {
   /** Whether reopening the app should redirect to the last viewed document. */
   RememberLastPath = "rememberLastPath",
   /** If web-style hand pointer should be used on interactive elements. */
   UseCursorPointer = "useCursorPointer",
+  /** Whether code blocks should show line numbers. */
   CodeBlockLineNumers = "codeBlockLineNumbers",
+  /** Whether documents have a separate edit mode instead of always editing. */
+  SeamlessEdit = "seamlessEdit",
 }
 
 export type UserPreferences = { [key in UserPreference]?: boolean };
@@ -113,8 +125,14 @@ export type CustomTheme = {
   accentText: string;
 };
 
+export type PublicTeam = {
+  avatarUrl: string;
+  name: string;
+  customTheme: Partial<CustomTheme>;
+};
+
 export enum TeamPreference {
-  /** Whether documents have a separate edit mode instead of seamless editing. */
+  /** Whether documents have a separate edit mode instead of always editing. */
   SeamlessEdit = "seamlessEdit",
   /** Whether to use team logo across the app for branding. */
   PublicBranding = "publicBranding",
@@ -143,6 +161,7 @@ export type NavigationNode = {
   id: string;
   title: string;
   url: string;
+  emoji?: string;
   children: NavigationNode[];
   isDraft?: boolean;
   collectionId?: string;
@@ -155,3 +174,67 @@ export type CollectionSort = {
   field: string;
   direction: "asc" | "desc";
 };
+
+export enum NotificationEventType {
+  PublishDocument = "documents.publish",
+  UpdateDocument = "documents.update",
+  CreateRevision = "revisions.create",
+  CreateCollection = "collections.create",
+  CreateComment = "comments.create",
+  MentionedInDocument = "documents.mentioned",
+  MentionedInComment = "comments.mentioned",
+  InviteAccepted = "emails.invite_accepted",
+  Onboarding = "emails.onboarding",
+  Features = "emails.features",
+  ExportCompleted = "emails.export_completed",
+}
+
+export enum NotificationChannelType {
+  App = "app",
+  Email = "email",
+  Chat = "chat",
+}
+
+export type NotificationSettings = {
+  [key in NotificationEventType]?:
+    | {
+        [key in NotificationChannelType]?: boolean;
+      }
+    | boolean;
+};
+
+export const NotificationEventDefaults = {
+  [NotificationEventType.PublishDocument]: false,
+  [NotificationEventType.UpdateDocument]: true,
+  [NotificationEventType.CreateCollection]: false,
+  [NotificationEventType.CreateComment]: true,
+  [NotificationEventType.MentionedInDocument]: true,
+  [NotificationEventType.MentionedInComment]: true,
+  [NotificationEventType.InviteAccepted]: true,
+  [NotificationEventType.Onboarding]: true,
+  [NotificationEventType.Features]: true,
+  [NotificationEventType.ExportCompleted]: true,
+};
+
+export enum UnfurlType {
+  Mention = "mention",
+  Document = "document",
+}
+
+export enum QueryNotices {
+  UnsubscribeDocument = "unsubscribe-document",
+}
+
+export type OEmbedType = "photo" | "video" | "rich";
+
+export type Unfurl<T = OEmbedType> = {
+  url?: string;
+  type: T;
+  title: string;
+  description?: string;
+  thumbnailUrl?: string | null;
+  meta?: Record<string, string>;
+};
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type ProsemirrorData = Record<string, any>;

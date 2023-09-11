@@ -1,4 +1,4 @@
-import { find } from "lodash";
+import find from "lodash/find";
 import { observer } from "mobx-react";
 import { BuildingBlocksIcon } from "outline-icons";
 import * as React from "react";
@@ -16,6 +16,7 @@ import SettingRow from "./components/SettingRow";
 
 type FormData = {
   drawIoUrl: string;
+  gristUrl: string;
 };
 
 function SelfHosted() {
@@ -23,9 +24,14 @@ function SelfHosted() {
   const { t } = useTranslation();
   const { showToast } = useToasts();
 
-  const integration = find(integrations.orderedData, {
+  const integrationDiagrams = find(integrations.orderedData, {
     type: IntegrationType.Embed,
     service: IntegrationService.Diagrams,
+  }) as Integration<IntegrationType.Embed> | undefined;
+
+  const integrationGrist = find(integrations.orderedData, {
+    type: IntegrationType.Embed,
+    service: IntegrationService.Grist,
   }) as Integration<IntegrationType.Embed> | undefined;
 
   const {
@@ -36,26 +42,30 @@ function SelfHosted() {
   } = useForm<FormData>({
     mode: "all",
     defaultValues: {
-      drawIoUrl: integration?.settings.url,
+      drawIoUrl: integrationDiagrams?.settings.url,
+      gristUrl: integrationGrist?.settings.url,
     },
   });
 
   React.useEffect(() => {
-    integrations.fetchPage({
+    void integrations.fetchPage({
       type: IntegrationType.Embed,
     });
   }, [integrations]);
 
   React.useEffect(() => {
-    reset({ drawIoUrl: integration?.settings.url });
-  }, [integration, reset]);
+    reset({
+      drawIoUrl: integrationDiagrams?.settings.url,
+      gristUrl: integrationGrist?.settings.url,
+    });
+  }, [integrationDiagrams, integrationGrist, reset]);
 
   const handleSubmit = React.useCallback(
     async (data: FormData) => {
       try {
         if (data.drawIoUrl) {
           await integrations.save({
-            id: integration?.id,
+            id: integrationDiagrams?.id,
             type: IntegrationType.Embed,
             service: IntegrationService.Diagrams,
             settings: {
@@ -63,7 +73,20 @@ function SelfHosted() {
             },
           });
         } else {
-          await integration?.delete();
+          await integrationDiagrams?.delete();
+        }
+
+        if (data.gristUrl) {
+          await integrations.save({
+            id: integrationGrist?.id,
+            type: IntegrationType.Embed,
+            service: IntegrationService.Grist,
+            settings: {
+              url: data.gristUrl,
+            },
+          });
+        } else {
+          await integrationGrist?.delete();
         }
 
         showToast(t("Settings saved"), {
@@ -75,14 +98,11 @@ function SelfHosted() {
         });
       }
     },
-    [integrations, integration, t, showToast]
+    [integrations, integrationDiagrams, integrationGrist, t, showToast]
   );
 
   return (
-    <Scene
-      title={t("Self Hosted")}
-      icon={<BuildingBlocksIcon color="currentColor" />}
-    >
+    <Scene title={t("Self Hosted")} icon={<BuildingBlocksIcon />}>
       <Heading>{t("Self Hosted")}</Heading>
 
       <form onSubmit={formHandleSubmit(handleSubmit)}>
@@ -98,6 +118,19 @@ function SelfHosted() {
             placeholder="https://app.diagrams.net/"
             pattern="https?://.*"
             {...register("drawIoUrl")}
+          />
+        </SettingRow>
+
+        <SettingRow
+          label={t("Grist deployment")}
+          name="gristUrl"
+          description={t("Add your self-hosted grist installation URL here.")}
+          border={false}
+        >
+          <Input
+            placeholder="https://docs.getgrist.com/"
+            pattern="https?://.*"
+            {...register("gristUrl")}
           />
         </SettingRow>
 

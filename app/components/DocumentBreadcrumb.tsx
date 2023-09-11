@@ -9,9 +9,16 @@ import Breadcrumb from "~/components/Breadcrumb";
 import CollectionIcon from "~/components/Icons/CollectionIcon";
 import useStores from "~/hooks/useStores";
 import { MenuInternalLink } from "~/types";
-import { collectionUrl } from "~/utils/routeHelpers";
+import {
+  archivePath,
+  collectionPath,
+  settingsPath,
+  trashPath,
+} from "~/utils/routeHelpers";
+import EmojiIcon from "./Icons/EmojiIcon";
 
 type Props = {
+  children?: React.ReactNode;
   document: Document;
   onlyText?: boolean;
 };
@@ -22,27 +29,27 @@ function useCategory(document: Document): MenuInternalLink | null {
   if (document.isDeleted) {
     return {
       type: "route",
-      icon: <TrashIcon color="currentColor" />,
+      icon: <TrashIcon />,
       title: t("Trash"),
-      to: "/trash",
+      to: trashPath(),
     };
   }
 
   if (document.isArchived) {
     return {
       type: "route",
-      icon: <ArchiveIcon color="currentColor" />,
+      icon: <ArchiveIcon />,
       title: t("Archive"),
-      to: "/archive",
+      to: archivePath(),
     };
   }
 
-  if (document.isTemplate) {
+  if (document.template) {
     return {
       type: "route",
-      icon: <ShapesIcon color="currentColor" />,
+      icon: <ShapesIcon />,
       title: t("Templates"),
-      to: "/templates",
+      to: settingsPath("templates"),
     };
   }
 
@@ -53,11 +60,13 @@ const DocumentBreadcrumb: React.FC<Props> = ({
   document,
   children,
   onlyText,
-}) => {
+}: Props) => {
   const { collections } = useStores();
   const { t } = useTranslation();
   const category = useCategory(document);
-  const collection = collections.get(document.collectionId);
+  const collection = document.collectionId
+    ? collections.get(document.collectionId)
+    : undefined;
 
   let collectionNode: MenuInternalLink | undefined;
 
@@ -66,14 +75,14 @@ const DocumentBreadcrumb: React.FC<Props> = ({
       type: "route",
       title: collection.name,
       icon: <CollectionIcon collection={collection} expanded />,
-      to: collectionUrl(collection.url),
+      to: collectionPath(collection.url),
     };
   } else if (document.collectionId && !collection) {
     collectionNode = {
       type: "route",
       title: t("Deleted Collection"),
       icon: undefined,
-      to: collectionUrl("deleted-collection"),
+      to: collectionPath("deleted-collection"),
     };
   }
 
@@ -97,7 +106,13 @@ const DocumentBreadcrumb: React.FC<Props> = ({
     path.forEach((node: NavigationNode) => {
       output.push({
         type: "route",
-        title: node.title,
+        title: node.emoji ? (
+          <>
+            <EmojiIcon emoji={node.emoji} /> {node.title}
+          </>
+        ) : (
+          node.title
+        ),
         to: node.url,
       });
     });
@@ -122,7 +137,11 @@ const DocumentBreadcrumb: React.FC<Props> = ({
     );
   }
 
-  return <Breadcrumb items={items} children={children} highlightFirstItem />;
+  return (
+    <Breadcrumb items={items} highlightFirstItem>
+      {children}
+    </Breadcrumb>
+  );
 };
 
 const SmallSlash = styled(GoToIcon)`
@@ -131,7 +150,7 @@ const SmallSlash = styled(GoToIcon)`
   vertical-align: middle;
   flex-shrink: 0;
 
-  fill: ${(props) => props.theme.slate};
+  fill: ${(props) => props.theme.textTertiary};
   opacity: 0.5;
 `;
 

@@ -1,12 +1,15 @@
 import invariant from "invariant";
-import { sortBy, filter, find, isUndefined } from "lodash";
+import filter from "lodash/filter";
+import find from "lodash/find";
+import isUndefined from "lodash/isUndefined";
+import sortBy from "lodash/sortBy";
 import { action, computed } from "mobx";
 import Share from "~/models/Share";
 import { client } from "~/utils/ApiClient";
-import BaseStore, { RPCAction } from "./BaseStore";
 import RootStore from "./RootStore";
+import Store, { RPCAction } from "./base/Store";
 
-export default class SharesStore extends BaseStore<Share> {
+export default class SharesStore extends Store<Share> {
   actions = [
     RPCAction.Info,
     RPCAction.List,
@@ -78,7 +81,9 @@ export default class SharesStore extends BaseStore<Share> {
       return;
     }
 
-    const collection = this.rootStore.collections.get(document.collectionId);
+    const collection = document.collectionId
+      ? this.rootStore.collections.get(document.collectionId)
+      : undefined;
     if (!collection) {
       return;
     }
@@ -99,7 +104,6 @@ export default class SharesStore extends BaseStore<Share> {
     return undefined;
   };
 
-  getByDocumentId = (documentId: string): Share | null | undefined => {
-    return find(this.orderedData, (share) => share.documentId === documentId);
-  };
+  getByDocumentId = (documentId: string): Share | null | undefined =>
+    find(this.orderedData, (share) => share.documentId === documentId);
 }

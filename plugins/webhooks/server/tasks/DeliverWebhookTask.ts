@@ -1,5 +1,4 @@
-import fetch from "fetch-with-proxy";
-import { useAgent } from "request-filtering-agent";
+import { FetchError } from "node-fetch";
 import { Op } from "sequelize";
 import WebhookDisabledEmail from "@server/emails/templates/WebhookDisabledEmail";
 import env from "@server/env";
@@ -63,6 +62,7 @@ import {
   ViewEvent,
   WebhookSubscriptionEvent,
 } from "@server/types";
+import fetch from "@server/utils/fetch";
 import presentWebhook, { WebhookPayload } from "../presenters/webhook";
 import presentWebhookSubscription from "../presenters/webhookSubscription";
 
@@ -102,6 +102,8 @@ export default class DeliverWebhookTask extends BaseTask<Props> {
       case "subscriptions.create":
       case "subscriptions.delete":
       case "authenticationProviders.update":
+      case "notifications.create":
+      case "notifications.update":
         // Ignored
         return;
       case "users.create":
@@ -513,16 +515,26 @@ export default class DeliverWebhookTask extends BaseTask<Props> {
     subscription: WebhookSubscription,
     event: RevisionEvent
   ): Promise<void> {
-    const model = await Revision.findByPk(event.modelId, {
-      paranoid: false,
-    });
+    const [model, document] = await Promise.all([
+      Revision.findByPk(event.modelId, {
+        paranoid: false,
+      }),
+      Document.findByPk(event.documentId, {
+        paranoid: false,
+      }),
+    ]);
+
+    const data = {
+      ...(model ? await presentRevision(model) : {}),
+      collectionId: document ? document.collectionId : undefined,
+    };
 
     await this.sendWebhook({
       event,
       subscription,
       payload: {
         id: event.modelId,
-        model: model && (await presentRevision(model)),
+        model: data,
       },
     });
   }
@@ -584,14 +596,20 @@ export default class DeliverWebhookTask extends BaseTask<Props> {
         body: JSON.stringify(requestBody),
         redirect: "error",
         timeout: 5000,
-        agent: useAgent(subscription.url),
       });
       status = response.ok ? "success" : "failed";
     } catch (err) {
-      Logger.error("Failed to send webhook", err, {
-        event,
-        deliveryId: delivery.id,
-      });
+      if (err instanceof FetchError && env.isCloudHosted) {
+        Logger.warn(`Failed to send webhook: ${err.message}`, {
+          event,
+          deliveryId: delivery.id,
+        });
+      } else {
+        Logger.error("Failed to send webhook", err, {
+          event,
+          deliveryId: delivery.id,
+        });
+      }
       status = "failed";
     }
 
@@ -647,11 +665,11 @@ export default class DeliverWebhookTask extends BaseTask<Props> {
       ]);
 
       if (createdBy && team) {
-        await WebhookDisabledEmail.schedule({
+        await new WebhookDisabledEmail({
           to: createdBy.email,
           teamUrl: team.url,
           webhookName: subscription.name,
-        });
+        }).schedule();
       }
     }
   }

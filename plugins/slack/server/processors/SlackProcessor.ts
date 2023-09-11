@@ -1,6 +1,7 @@
-import fetch from "fetch-with-proxy";
+import { differenceInMilliseconds } from "date-fns";
 import { Op } from "sequelize";
 import { IntegrationService, IntegrationType } from "@shared/types";
+import { Minute } from "@shared/utils/time";
 import env from "@server/env";
 import { Document, Integration, Collection, Team } from "@server/models";
 import BaseProcessor from "@server/queues/processors/BaseProcessor";
@@ -10,6 +11,7 @@ import {
   RevisionEvent,
   Event,
 } from "@server/types";
+import fetch from "@server/utils/fetch";
 import presentMessageAttachment from "../presenters/messageAttachment";
 
 export default class SlackProcessor extends BaseProcessor {
@@ -94,9 +96,12 @@ export default class SlackProcessor extends BaseProcessor {
       return;
     }
 
+    // if the document was published less than a minute ago, don't send a
+    // separate notification.
     if (
       event.name === "revisions.create" &&
-      document.updatedAt === document.publishedAt
+      differenceInMilliseconds(document.updatedAt, document.publishedAt) <
+        Minute
     ) {
       return;
     }
@@ -117,10 +122,10 @@ export default class SlackProcessor extends BaseProcessor {
     if (!integration) {
       return;
     }
-    let text = `${document.updatedBy.name} updated a document`;
+    let text = `${document.updatedBy.name} updated "${document.title}"`;
 
     if (event.name === "documents.publish") {
-      text = `${document.createdBy.name} published a new document`;
+      text = `${document.createdBy.name} published "${document.title}"`;
     }
 
     await fetch(integration.settings.url, {

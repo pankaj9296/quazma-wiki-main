@@ -11,10 +11,6 @@ export function draftsPath(): string {
   return "/drafts";
 }
 
-export function templatesPath(): string {
-  return "/templates";
-}
-
 export function archivePath(): string {
   return "/archive";
 }
@@ -23,38 +19,22 @@ export function trashPath(): string {
   return "/trash";
 }
 
-export function settingsPath(): string {
-  return "/settings";
-}
-
-export function organizationSettingsPath(): string {
-  return "/settings/details";
-}
-
-export function profileSettingsPath(): string {
-  return "/settings";
-}
-
-export function accountPreferencesPath(): string {
-  return "/settings/preferences";
-}
-
-export function groupSettingsPath(): string {
-  return "/settings/groups";
+export function settingsPath(section?: string): string {
+  return "/settings" + (section ? `/${section}` : "");
 }
 
 export function commentPath(document: Document, comment: Comment): string {
-  return `${documentUrl(document)}?commentId=${comment.id}`;
+  return `${documentPath(document)}?commentId=${comment.id}`;
 }
 
-export function collectionUrl(url: string, section?: string): string {
+export function collectionPath(url: string, section?: string): string {
   if (section) {
     return `${url}/${section}`;
   }
   return url;
 }
 
-export function updateCollectionUrl(
+export function updateCollectionPath(
   oldUrl: string,
   collection: Collection
 ): string {
@@ -65,20 +45,23 @@ export function updateCollectionUrl(
   );
 }
 
-export function documentUrl(doc: Document): string {
-  return doc.url;
+export function documentPath(doc: Document): string {
+  return doc.path;
 }
 
-export function editDocumentUrl(doc: Document): string {
-  return `${doc.url}/edit`;
+export function documentEditPath(doc: Document): string {
+  return `${documentPath(doc)}/edit`;
 }
 
-export function documentInsightsUrl(doc: Document): string {
-  return `${doc.url}/insights`;
+export function documentInsightsPath(doc: Document): string {
+  return `${documentPath(doc)}/insights`;
 }
 
-export function documentHistoryUrl(doc: Document, revisionId?: string): string {
-  let base = `${doc.url}/history`;
+export function documentHistoryPath(
+  doc: Document,
+  revisionId?: string
+): string {
+  let base = `${documentPath(doc)}/history`;
   if (revisionId) {
     base += `/${revisionId}`;
   }
@@ -89,7 +72,7 @@ export function documentHistoryUrl(doc: Document, revisionId?: string): string {
  * Replace full url's document part with the new one in case
  * the document slug has been updated
  */
-export function updateDocumentUrl(oldUrl: string, document: Document): string {
+export function updateDocumentPath(oldUrl: string, document: Document): string {
   // Update url to match the current one
   return oldUrl.replace(
     new RegExp("/doc/([0-9a-zA-Z-_~]*-[a-zA-z0-9]{10,15})"),
@@ -97,12 +80,15 @@ export function updateDocumentUrl(oldUrl: string, document: Document): string {
   );
 }
 
+export function newTemplatePath(collectionId: string) {
+  return settingsPath("templates") + `/new?collectionId=${collectionId}`;
+}
+
 export function newDocumentPath(
-  collectionId?: string,
+  collectionId?: string | null,
   params: {
     parentDocumentId?: string;
     templateId?: string;
-    template?: boolean;
   } = {}
 ): string {
   return collectionId
@@ -132,12 +118,8 @@ export function sharedDocumentPath(shareId: string, docPath?: string) {
   return docPath ? `/s/${shareId}${docPath}` : `/s/${shareId}`;
 }
 
-export function notFoundUrl(): string {
-  return "/404";
-}
-
 export function urlify(path: string): string {
-  return `${window.location.host}${path}`;
+  return `${window.location.origin}${path}`;
 }
 
 export const matchDocumentSlug =

@@ -1,4 +1,4 @@
-import { flattenDeep } from "lodash";
+import flattenDeep from "lodash/flattenDeep";
 import * as React from "react";
 import { Optional } from "utility-types";
 import { v4 as uuidv4 } from "uuid";
@@ -35,7 +35,7 @@ export function createAction(definition: Optional<Action, "id">): Action {
           return definition.perform?.(context);
         }
       : undefined,
-    id: uuidv4(),
+    id: definition.id ?? uuidv4(),
   };
 }
 
@@ -49,9 +49,7 @@ export function actionToMenuItem(
   const title = resolve<string>(action.name, context);
   const icon =
     resolvedIcon && action.iconInContextMenu !== false
-      ? React.cloneElement(resolvedIcon, {
-          color: "currentColor",
-        })
+      ? resolvedIcon
       : undefined;
 
   if (resolvedChildren) {

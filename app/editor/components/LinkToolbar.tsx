@@ -82,7 +82,7 @@ export default function LinkToolbar({
           )
       );
 
-      createAndInsertLink(view, title, href, {
+      return createAndInsertLink(view, title, href, {
         onCreateLink,
         onShowToast: showToast,
         dictionary,
@@ -128,7 +128,7 @@ export default function LinkToolbar({
   const active = isActive(view, rest.isActive);
 
   return (
-    <FloatingToolbar ref={menuRef} active={active}>
+    <FloatingToolbar ref={menuRef} active={active} width={336}>
       {active && (
         <LinkEditor
           key={`${selection.from}-${selection.to}`}

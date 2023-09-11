@@ -1,4 +1,7 @@
-import { isNull } from "lodash";
+import { faker } from "@faker-js/faker";
+import isNil from "lodash/isNil";
+import isNull from "lodash/isNull";
+import randomstring from "randomstring";
 import { v4 as uuidv4 } from "uuid";
 import {
   CollectionPermission,
@@ -6,6 +9,7 @@ import {
   FileOperationType,
   IntegrationService,
   IntegrationType,
+  NotificationEventType,
 } from "@shared/types";
 import {
   Share,
@@ -20,15 +24,15 @@ import {
   Attachment,
   IntegrationAuthentication,
   Integration,
-  AuthenticationProvider,
   FileOperation,
   WebhookSubscription,
   WebhookDelivery,
   ApiKey,
   Subscription,
+  Notification,
+  SearchQuery,
+  Pin,
 } from "@server/models";
-
-let count = 1;
 
 export async function buildApiKey(overrides: Partial<ApiKey> = {}) {
   if (!overrides.userId) {
@@ -37,7 +41,7 @@ export async function buildApiKey(overrides: Partial<ApiKey> = {}) {
   }
 
   return ApiKey.create({
-    name: "My API Key",
+    name: faker.lorem.words(3),
     ...overrides,
   });
 }
@@ -73,7 +77,9 @@ export async function buildStar(overrides: Partial<Star> = {}) {
   let user;
 
   if (overrides.userId) {
-    user = await User.findByPk(overrides.userId);
+    user = await User.findByPk(overrides.userId, {
+      rejectOnEmpty: true,
+    });
   } else {
     user = await buildUser();
     overrides.userId = user.id;
@@ -82,7 +88,7 @@ export async function buildStar(overrides: Partial<Star> = {}) {
   if (!overrides.documentId) {
     const document = await buildDocument({
       createdById: overrides.userId,
-      teamId: user?.teamId,
+      teamId: user.teamId,
     });
     overrides.documentId = document.id;
   }
@@ -97,7 +103,9 @@ export async function buildSubscription(overrides: Partial<Subscription> = {}) {
   let user;
 
   if (overrides.userId) {
-    user = await User.findByPk(overrides.userId);
+    user = await User.findByPk(overrides.userId, {
+      rejectOnEmpty: true,
+    });
   } else {
     user = await buildUser();
     overrides.userId = user.id;
@@ -106,7 +114,7 @@ export async function buildSubscription(overrides: Partial<Subscription> = {}) {
   if (!overrides.documentId) {
     const document = await buildDocument({
       createdById: overrides.userId,
-      teamId: user?.teamId,
+      teamId: user.teamId,
     });
     overrides.documentId = document.id;
   }
@@ -119,15 +127,13 @@ export async function buildSubscription(overrides: Partial<Subscription> = {}) {
 }
 
 export function buildTeam(overrides: Record<string, any> = {}) {
-  count++;
   return Team.create(
     {
-      name: `Team ${count}`,
-      collaborativeEditing: false,
+      name: faker.company.name(),
       authenticationProviders: [
         {
           name: "slack",
-          providerId: uuidv4(),
+          providerId: randomstring.generate(32),
         },
       ],
       ...overrides,
@@ -152,10 +158,9 @@ export async function buildGuestUser(overrides: Partial<User> = {}) {
     overrides.teamId = team.id;
   }
 
-  count++;
   return User.create({
-    email: `user${count}@example.com`,
-    name: `User ${count}`,
+    email: faker.internet.email().toLowerCase(),
+    name: faker.person.fullName(),
     createdAt: new Date("2018-01-01T00:00:00.000Z"),
     lastActiveAt: new Date("2018-01-01T00:00:00.000Z"),
     ...overrides,
@@ -169,29 +174,29 @@ export async function buildUser(overrides: Partial<User> = {}) {
     team = await buildTeam();
     overrides.teamId = team.id;
   } else {
-    team = await Team.findByPk(overrides.teamId);
+    team = await Team.findByPk(overrides.teamId, {
+      include: "authenticationProviders",
+      rejectOnEmpty: true,
+      paranoid: false,
+    });
   }
 
-  const authenticationProvider = await AuthenticationProvider.findOne({
-    where: {
-      teamId: overrides.teamId,
-    },
-  });
-  count++;
+  const authenticationProvider = team.authenticationProviders[0];
   const user = await User.create(
     {
-      email: `user${count}@example.com`,
-      name: `User ${count}`,
-      username: `user${count}`,
+      email: faker.internet.email().toLowerCase(),
+      name: faker.person.fullName(),
       createdAt: new Date("2018-01-01T00:00:00.000Z"),
       updatedAt: new Date("2018-01-02T00:00:00.000Z"),
       lastActiveAt: new Date("2018-01-03T00:00:00.000Z"),
-      authentications: [
-        {
-          authenticationProviderId: authenticationProvider!.id,
-          providerId: uuidv4(),
-        },
-      ],
+      authentications: authenticationProvider
+        ? [
+            {
+              authenticationProviderId: authenticationProvider.id,
+              providerId: randomstring.generate(32),
+            },
+          ]
+        : [],
       ...overrides,
     },
     {
@@ -221,10 +226,9 @@ export async function buildInvite(overrides: Partial<User> = {}) {
 
   const actor = await buildUser({ teamId: overrides.teamId });
 
-  count++;
   return User.create({
-    email: `user${count}@example.com`,
-    name: `User ${count}`,
+    email: faker.internet.email().toLowerCase(),
+    name: faker.person.fullName(),
     createdAt: new Date("2018-01-01T00:00:00.000Z"),
     invitedById: actor.id,
     authentications: [],
@@ -246,7 +250,7 @@ export async function buildIntegration(overrides: Partial<Integration> = {}) {
     service: IntegrationService.Slack,
     userId: user.id,
     teamId: user.teamId,
-    token: "fake-access-token",
+    token: randomstring.generate(32),
     scopes: ["example", "scopes", "here"],
   });
   return Integration.create({
@@ -254,7 +258,7 @@ export async function buildIntegration(overrides: Partial<Integration> = {}) {
     type: IntegrationType.Post,
     events: ["documents.update", "documents.publish"],
     settings: {
-      serviceTeamId: "slack_team_id",
+      serviceTeamId: uuidv4(),
     },
     authenticationId: authentication.id,
     ...overrides,
@@ -276,10 +280,9 @@ export async function buildCollection(
     overrides.userId = user.id;
   }
 
-  count++;
   return Collection.create({
-    name: `Test Collection ${count}`,
-    description: "Test collection description",
+    name: faker.lorem.words(2),
+    description: faker.lorem.words(4),
     createdById: overrides.userId,
     permission: CollectionPermission.ReadWrite,
     ...overrides,
@@ -301,9 +304,8 @@ export async function buildGroup(
     overrides.userId = user.id;
   }
 
-  count++;
   return Group.create({
-    name: `Test Group ${count}`,
+    name: faker.lorem.words(2),
     createdById: overrides.userId,
     ...overrides,
   });
@@ -324,7 +326,6 @@ export async function buildGroupUser(
     overrides.userId = user.id;
   }
 
-  count++;
   return GroupUser.create({
     createdById: overrides.userId,
     ...overrides,
@@ -334,7 +335,7 @@ export async function buildGroupUser(
 export async function buildDraftDocument(
   overrides: Partial<Document> & { userId?: string } = {}
 ) {
-  return buildDocument({ ...overrides, collectionId: null });
+  return buildDocument({ ...overrides, publishedAt: null });
 }
 
 export async function buildDocument(
@@ -358,28 +359,39 @@ export async function buildDocument(
     overrides.userId = user.id;
   }
 
+  let collection;
   if (overrides.collectionId === undefined) {
-    const collection = await buildCollection({
+    collection = await buildCollection({
       teamId: overrides.teamId,
       userId: overrides.userId,
     });
     overrides.collectionId = collection.id;
   }
 
-  count++;
-  return Document.create(
+  const document = await Document.create(
     {
-      title: `Document ${count}`,
+      title: faker.lorem.words(4),
       text: "This is the text in an example document",
       publishedAt: isNull(overrides.collectionId) ? null : new Date(),
       lastModifiedById: overrides.userId,
       createdById: overrides.userId,
+      editorVersion: 2,
       ...overrides,
     },
     {
       silent: overrides.createdAt || overrides.updatedAt ? true : false,
     }
   );
+
+  if (overrides.collectionId && overrides.publishedAt !== null) {
+    collection = collection
+      ? await Collection.findByPk(overrides.collectionId)
+      : undefined;
+
+    await collection?.addDocumentToStructure(document, 0);
+  }
+
+  return document;
 }
 
 export async function buildFileOperation(
@@ -429,9 +441,8 @@ export async function buildAttachment(overrides: Partial<Attachment> = {}) {
     overrides.documentId = document.id;
   }
 
-  count++;
   return Attachment.create({
-    key: `uploads/key/to/file ${count}.png`,
+    key: `uploads/key/to/${faker.system.fileName}.png`,
     contentType: "image/png",
     size: 100,
     acl: "public-read",
@@ -494,4 +505,79 @@ export async function buildWebhookDelivery(
   }
 
   return WebhookDelivery.create(overrides);
+}
+
+export async function buildNotification(
+  overrides: Partial<Notification> = {}
+): Promise<Notification> {
+  if (!overrides.event) {
+    overrides.event = NotificationEventType.UpdateDocument;
+  }
+
+  if (!overrides.teamId) {
+    const team = await buildTeam();
+    overrides.teamId = team.id;
+  }
+
+  if (!overrides.userId) {
+    const user = await buildUser({
+      teamId: overrides.teamId,
+    });
+    overrides.userId = user.id;
+  }
+
+  return Notification.create(overrides);
+}
+
+export async function buildSearchQuery(
+  overrides: Partial<SearchQuery> = {}
+): Promise<SearchQuery> {
+  if (!overrides.teamId) {
+    const team = await buildTeam();
+    overrides.teamId = team.id;
+  }
+
+  if (!overrides.userId) {
+    const user = await buildUser({
+      teamId: overrides.teamId,
+    });
+    overrides.userId = user.id;
+  }
+
+  if (!overrides.source) {
+    overrides.source = "app";
+  }
+
+  if (isNil(overrides.query)) {
+    overrides.query = "query";
+  }
+
+  if (isNil(overrides.results)) {
+    overrides.results = 1;
+  }
+
+  return SearchQuery.create(overrides);
+}
+
+export async function buildPin(overrides: Partial<Pin> = {}): Promise<Pin> {
+  if (!overrides.teamId) {
+    const team = await buildTeam();
+    overrides.teamId = team.id;
+  }
+
+  if (!overrides.createdById) {
+    const user = await buildUser({
+      teamId: overrides.teamId,
+    });
+    overrides.createdById = user.id;
+  }
+
+  if (!overrides.documentId) {
+    const document = await buildDocument({
+      teamId: overrides.teamId,
+    });
+    overrides.documentId = document.id;
+  }
+
+  return Pin.create(overrides);
 }

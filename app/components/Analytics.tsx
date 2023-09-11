@@ -1,14 +1,18 @@
 /* eslint-disable prefer-rest-params */
 /* global ga */
-import { escape } from "lodash";
+import escape from "lodash/escape";
 import * as React from "react";
 import { IntegrationService } from "@shared/types";
 import env from "~/env";
 
-const Analytics: React.FC = ({ children }) => {
+type Props = {
+  children?: React.ReactNode;
+};
+
+const Analytics: React.FC = ({ children }: Props) => {
   // Google Analytics 3
   React.useEffect(() => {
-    if (!env.GOOGLE_ANALYTICS_ID) {
+    if (!env.GOOGLE_ANALYTICS_ID?.startsWith("UA-")) {
       return;
     }
 
@@ -37,25 +41,36 @@ const Analytics: React.FC = ({ children }) => {
 
   // Google Analytics 4
   React.useEffect(() => {
-    if (env.analytics.service !== IntegrationService.GoogleAnalytics) {
+    const measurementIds = [];
+
+    if (env.analytics.service === IntegrationService.GoogleAnalytics) {
+      measurementIds.push(escape(env.analytics.settings?.measurementId));
+    }
+    if (env.GOOGLE_ANALYTICS_ID?.startsWith("G-")) {
+      measurementIds.push(env.GOOGLE_ANALYTICS_ID);
+    }
+    if (measurementIds.length === 0) {
       return;
     }
 
-    const measurementId = escape(env.analytics.settings?.measurementId);
+    const params = {
+      allow_google_signals: false,
+      restricted_data_processing: true,
+    };
 
     window.dataLayer = window.dataLayer || [];
     window.gtag = function () {
       window.dataLayer.push(arguments);
     };
     window.gtag("js", new Date());
-    window.gtag("config", measurementId, {
-      allow_google_signals: false,
-      restricted_data_processing: true,
-    });
+
+    for (const measurementId of measurementIds) {
+      window.gtag("config", measurementId, params);
+    }
 
     const script = document.createElement("script");
     script.type = "text/javascript";
-    script.src = `https://www.googletagmanager.com/gtag/js?id=${measurementId}`;
+    script.src = `https://www.googletagmanager.com/gtag/js?id=${measurementIds[0]}`;
     script.async = true;
     document.getElementsByTagName("head")[0]?.appendChild(script);
   }, []);

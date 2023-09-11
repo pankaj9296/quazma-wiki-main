@@ -1,4 +1,6 @@
-import { isEqual, filter, includes } from "lodash";
+import filter from "lodash/filter";
+import includes from "lodash/includes";
+import isEqual from "lodash/isEqual";
 import randomstring from "randomstring";
 import * as React from "react";
 import { useEffect } from "react";
@@ -14,7 +16,7 @@ import useCurrentTeam from "~/hooks/useCurrentTeam";
 import useMobile from "~/hooks/useMobile";
 
 const WEBHOOK_EVENTS = {
-  user: [
+  users: [
     "users.create",
     "users.signin",
     "users.update",
@@ -25,7 +27,7 @@ const WEBHOOK_EVENTS = {
     "users.promote",
     "users.demote",
   ],
-  document: [
+  documents: [
     "documents.create",
     "documents.publish",
     "documents.unpublish",
@@ -38,7 +40,7 @@ const WEBHOOK_EVENTS = {
     "documents.update",
     "documents.title_change",
   ],
-  collection: [
+  collections: [
     "collections.create",
     "collections.update",
     "collections.delete",
@@ -49,30 +51,30 @@ const WEBHOOK_EVENTS = {
     "collections.move",
     "collections.permission_changed",
   ],
-  comment: ["comments.create", "comments.update", "comments.delete"],
-  revision: ["revisions.create"],
-  fileOperation: [
+  comments: ["comments.create", "comments.update", "comments.delete"],
+  revisions: ["revisions.create"],
+  fileOperations: [
     "fileOperations.create",
     "fileOperations.update",
     "fileOperations.delete",
   ],
-  group: [
+  groups: [
     "groups.create",
     "groups.update",
     "groups.delete",
     "groups.add_user",
     "groups.remove_user",
   ],
-  integration: ["integrations.create", "integrations.update"],
-  share: ["shares.create", "shares.update", "shares.revoke"],
-  team: ["teams.update"],
-  pin: ["pins.create", "pins.update", "pins.delete"],
-  webhookSubscription: [
+  integrations: ["integrations.create", "integrations.update"],
+  shares: ["shares.create", "shares.update", "shares.revoke"],
+  teams: ["teams.update"],
+  pins: ["pins.create", "pins.update", "pins.delete"],
+  webhookSubscriptions: [
     "webhookSubscriptions.create",
     "webhookSubscriptions.delete",
     "webhookSubscriptions.update",
   ],
-  view: ["views.create"],
+  views: ["views.create"],
 };
 
 const EventCheckboxLabel = styled.label`
@@ -269,9 +271,7 @@ function WebhookSubscriptionForm({ handleSubmit, webhookSubscription }: Props) {
           needs to function.
         </Trans>
       </Text>
-
       <EventCheckbox label={t("All events")} value="*" />
-
       <FieldSet disabled={isAllEventSelected}>
         <GroupGrid isMobile={isMobile}>
           {Object.entries(WEBHOOK_EVENTS)
@@ -283,7 +283,9 @@ function WebhookSubscriptionForm({ handleSubmit, webhookSubscription }: Props) {
             .map(([group, events], i) => (
               <GroupWrapper key={i} isMobile={isMobile}>
                 <EventCheckbox
-                  label={t(`All {{ groupName }} events`, { groupName: group })}
+                  label={t(`All {{ groupName }} events`, {
+                    groupName: group.replace(/s$/, ""),
+                  })}
                   value={group}
                 />
                 <FieldSet disabled={selectedGroups.includes(group)}>

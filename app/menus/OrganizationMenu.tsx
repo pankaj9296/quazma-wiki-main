@@ -11,7 +11,11 @@ import usePrevious from "~/hooks/usePrevious";
 import useStores from "~/hooks/useStores";
 import separator from "~/menus/separator";
 
-const OrganizationMenu: React.FC = ({ children }) => {
+type Props = {
+  children?: React.ReactNode;
+};
+
+const OrganizationMenu: React.FC = ({ children }: Props) => {
   const menu = useMenuState({
     unstable_offset: [4, -4],
     placement: "bottom-start",
@@ -31,15 +35,16 @@ const OrganizationMenu: React.FC = ({ children }) => {
 
   // NOTE: it's useful to memoize on the team id and session because the action
   // menu is not cached at all.
-  const actions = React.useMemo(() => {
-    return [
+  const actions = React.useMemo(
+    () => [
       ...createTeamsList(context),
       createTeam,
       separator(),
       navigateToSettings,
       logout,
-    ];
-  }, [context]);
+    ],
+    [context]
+  );
 
   return (
     <>

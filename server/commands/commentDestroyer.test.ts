@@ -1,9 +1,6 @@
 import { Comment, Event } from "@server/models";
 import { buildDocument, buildUser } from "@server/test/factories";
-import { setupTestDatabase } from "@server/test/support";
 import commentDestroyer from "./commentDestroyer";
-
-setupTestDatabase();
 
 describe("commentDestroyer", () => {
   const ip = "127.0.0.1";
@@ -18,7 +15,20 @@ describe("commentDestroyer", () => {
     const comment = await Comment.create({
       teamId: document.teamId,
       documentId: document.id,
-      data: { text: "test" },
+      data: {
+        type: "doc",
+        content: [
+          {
+            type: "paragraph",
+            content: [
+              {
+                type: "text",
+                text: "test",
+              },
+            ],
+          },
+        ],
+      },
       createdById: user.id,
     });
 
@@ -28,10 +38,16 @@ describe("commentDestroyer", () => {
       ip,
     });
 
-    const count = await Comment.count();
+    const count = await Comment.count({
+      where: {
+        id: comment.id,
+      },
+    });
     expect(count).toEqual(0);
 
-    const event = await Event.findOne();
+    const event = await Event.findLatest({
+      teamId: user.teamId,
+    });
     expect(event!.name).toEqual("comments.delete");
     expect(event!.modelId).toEqual(comment.id);
   });

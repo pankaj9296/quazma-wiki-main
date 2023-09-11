@@ -1,14 +1,11 @@
 import { subDays } from "date-fns";
 import InviteReminderEmail from "@server/emails/templates/InviteReminderEmail";
 import { buildInvite } from "@server/test/factories";
-import { setupTestDatabase } from "@server/test/support";
 import InviteReminderTask from "./InviteReminderTask";
 
-setupTestDatabase();
-
 describe("InviteReminderTask", () => {
-  it("should not destroy documents not deleted", async () => {
-    const spy = jest.spyOn(InviteReminderEmail, "schedule");
+  it("should send reminder emails", async () => {
+    const spy = jest.spyOn(InviteReminderEmail.prototype, "schedule");
 
     // too old
     await buildInvite({

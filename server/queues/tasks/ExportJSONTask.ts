@@ -1,5 +1,5 @@
 import JSZip from "jszip";
-import { omit } from "lodash";
+import omit from "lodash/omit";
 import { NavigationNode } from "@shared/types";
 import { parser } from "@server/editor";
 import env from "@server/env";
@@ -16,7 +16,6 @@ import { CollectionJSONExport, JSONExportMetadata } from "@server/types";
 import ZipHelper from "@server/utils/ZipHelper";
 import { serializeFilename } from "@server/utils/fs";
 import parseAttachmentIds from "@server/utils/parseAttachmentIds";
-import { getFileByKey } from "@server/utils/s3";
 import packageJson from "../../../package.json";
 import ExportTask from "./ExportTask";
 
@@ -26,7 +25,11 @@ export default class ExportJSONTask extends ExportTask {
 
     // serial to avoid overloading, slow and steady wins the race
     for (const collection of collections) {
-      await this.addCollectionToArchive(zip, collection);
+      await this.addCollectionToArchive(
+        zip,
+        collection,
+        fileOperation.includeAttachments
+      );
     }
 
     await this.addMetadataToArchive(zip, fileOperation);
@@ -53,10 +56,14 @@ export default class ExportJSONTask extends ExportTask {
     );
   }
 
-  private async addCollectionToArchive(zip: JSZip, collection: Collection) {
+  private async addCollectionToArchive(
+    zip: JSZip,
+    collection: Collection,
+    includeAttachments: boolean
+  ) {
     const output: CollectionJSONExport = {
       collection: {
-        ...omit(presentCollection(collection), ["url", "documents"]),
+        ...omit(presentCollection(collection), ["url"]),
         description: collection.description
           ? parser.parse(collection.description)
           : null,
@@ -76,22 +83,22 @@ export default class ExportJSONTask extends ExportTask {
           continue;
         }
 
-        const attachments = await Attachment.findAll({
-          where: {
-            teamId: document.teamId,
-            id: parseAttachmentIds(document.text),
-          },
-        });
+        const attachments = includeAttachments
+          ? await Attachment.findAll({
+              where: {
+                teamId: document.teamId,
+                id: parseAttachmentIds(document.text),
+              },
+            })
+          : [];
 
         await Promise.all(
           attachments.map(async (attachment) => {
             try {
-              const stream = getFileByKey(attachment.key);
-              if (stream) {
-                zip.file(attachment.key, stream, {
-                  createFolders: true,
-                });
-              }
+              zip.file(attachment.key, attachment.buffer, {
+                date: attachment.updatedAt,
+                createFolders: true,
+              });
 
               output.attachments[attachment.id] = {
                 ...omit(presentAttachment(attachment), "url"),

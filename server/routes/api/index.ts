@@ -24,7 +24,7 @@ import groups from "./groups";
 import integrations from "./integrations";
 import apiWrapper from "./middlewares/apiWrapper";
 import editor from "./middlewares/editor";
-import notificationSettings from "./notificationSettings";
+import notifications from "./notifications";
 import pins from "./pins";
 import revisions from "./revisions";
 import searches from "./searches";
@@ -32,6 +32,7 @@ import shares from "./shares";
 import stars from "./stars";
 import subscriptions from "./subscriptions";
 import teams from "./teams";
+import urls from "./urls";
 import users from "./users";
 import views from "./views";
 
@@ -53,13 +54,17 @@ api.use(apiWrapper());
 api.use(editor());
 
 // register package API routes before others to allow for overrides
+const rootDir = env.ENVIRONMENT === "test" ? "" : "build";
 glob
-  .sync("build/plugins/*/server/api/!(*.test).js")
+  .sync(path.join(rootDir, "plugins/*/server/api/!(*.test).[jt]s"))
   .forEach((filePath: string) => {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const pkg: Router = require(path.join(process.cwd(), filePath)).default;
-    router.use("/", pkg.routes());
-    Logger.debug("lifecycle", `Registered API routes for ${filePath}`);
+
+    if (pkg && "routes" in pkg) {
+      router.use("/", pkg.routes());
+      Logger.debug("lifecycle", `Registered API routes for ${filePath}`);
+    }
   });
 
 // routes
@@ -80,11 +85,12 @@ router.use("/", stars.routes());
 router.use("/", subscriptions.routes());
 router.use("/", teams.routes());
 router.use("/", integrations.routes());
-router.use("/", notificationSettings.routes());
+router.use("/", notifications.routes());
 router.use("/", attachments.routes());
 router.use("/", cron.routes());
 router.use("/", groups.routes());
 router.use("/", fileOperationsRoute.routes());
+router.use("/", urls.routes());
 
 if (env.ENVIRONMENT === "development") {
   router.use("/", developer.routes());

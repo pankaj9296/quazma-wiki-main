@@ -1,10 +1,12 @@
-import { throttle } from "lodash";
+import throttle from "lodash/throttle";
 import { observer } from "mobx-react";
 import * as React from "react";
 import { useTranslation } from "react-i18next";
 import { useHistory } from "react-router-dom";
 import scrollIntoView from "smooth-scroll-into-view-if-needed";
 import styled, { css } from "styled-components";
+import breakpoint from "styled-components-breakpoint";
+import { s } from "@shared/styles";
 import Comment from "~/models/Comment";
 import Document from "~/models/Document";
 import Avatar from "~/components/Avatar";
@@ -15,7 +17,10 @@ import Typing from "~/components/Typing";
 import { WebsocketContext } from "~/components/WebsocketProvider";
 import useCurrentUser from "~/hooks/useCurrentUser";
 import useOnClickOutside from "~/hooks/useOnClickOutside";
+import usePolicy from "~/hooks/usePolicy";
 import useStores from "~/hooks/useStores";
+import { hover } from "~/styles";
+import { sidebarAppearDuration } from "~/styles/animations";
 import CommentForm from "./CommentForm";
 import CommentThreadItem from "./CommentThreadItem";
 
@@ -66,8 +71,11 @@ function CommentThread({
     document,
     comment: thread,
   });
+  const can = usePolicy(document.id);
 
-  const commentsInThread = comments.inThread(thread.id);
+  const commentsInThread = comments
+    .inThread(thread.id)
+    .filter((comment) => !comment.isNew);
 
   useOnClickOutside(topRef, (event) => {
     if (
@@ -95,16 +103,28 @@ function CommentThread({
   }, [focused, autoFocus]);
 
   React.useEffect(() => {
-    if (focused && topRef.current) {
-      scrollIntoView(topRef.current, {
-        scrollMode: "if-needed",
-        behavior: "smooth",
-        block: "start",
-        boundary: (parent) => {
-          // Prevents body and other parent elements from being scrolled
-          return parent.id !== "comments";
+    if (focused) {
+      // If the thread is already visible, scroll it into view immediately,
+      // otherwise wait for the sidebar to appear.
+      const isVisible =
+        (topRef.current?.getBoundingClientRect().left ?? 0) < window.innerWidth;
+
+      setTimeout(
+        () => {
+          if (!topRef.current) {
+            return;
+          }
+          return scrollIntoView(topRef.current, {
+            scrollMode: "if-needed",
+            behavior: "smooth",
+            block: "end",
+            boundary: (parent) =>
+              // Prevents body and other parent elements from being scrolled
+              parent.id !== "comments",
+          });
         },
-      });
+        isVisible ? 0 : sidebarAppearDuration
+      );
 
       setTimeout(() => {
         const commentMarkElement = window.document?.getElementById(
@@ -139,7 +159,8 @@ function CommentThread({
             comment={comment}
             key={comment.id}
             firstOfThread={index === 0}
-            lastOfThread={index === commentsInThread.length - 1 && !focused}
+            lastOfThread={index === commentsInThread.length - 1}
+            canReply={focused && can.comment}
             firstOfAuthor={firstOfAuthor}
             lastOfAuthor={lastOfAuthor}
             previousCommentCreatedAt={commentsInThread[index - 1]?.createdAt}
@@ -157,16 +178,8 @@ function CommentThread({
           </Flex>
         ))}
 
-      <ResizingHeightContainer
-        hideOverflow={false}
-        config={{
-          transition: {
-            duration: 0.1,
-            ease: "easeInOut",
-          },
-        }}
-      >
-        {focused && (
+      <ResizingHeightContainer hideOverflow={false}>
+        {(focused || commentsInThread.length === 0) && can.comment && (
           <Fade timing={100}>
             <CommentForm
               documentId={document.id}
@@ -179,7 +192,7 @@ function CommentThread({
           </Fade>
         )}
       </ResizingHeightContainer>
-      {!focused && !recessed && (
+      {!focused && !recessed && can.comment && (
         <Reply onClick={() => setAutoFocus(true)}>{t("Reply")}…</Reply>
       )}
     </Thread>
@@ -191,17 +204,20 @@ const Reply = styled.button`
   padding: 8px;
   margin: 0;
   background: none;
-  color: ${(props) => props.theme.textTertiary};
+  color: ${s("textTertiary")};
   font-size: 14px;
   -webkit-appearance: none;
   cursor: var(--pointer);
-  opacity: 0;
   transition: opacity 100ms ease-out;
   position: absolute;
   text-align: left;
   width: 100%;
   bottom: -30px;
   left: 32px;
+
+  ${breakpoint("tablet")`
+    opacity: 0;
+  `}
 `;
 
 const Thread = styled.div<{
@@ -215,7 +231,7 @@ const Thread = styled.div<{
   position: relative;
   transition: opacity 100ms ease-out;
 
-  &:hover {
+  &: ${hover} {
     ${Reply} {
       opacity: 1;
     }

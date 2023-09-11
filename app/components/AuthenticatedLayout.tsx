@@ -15,6 +15,7 @@ import type { Editor as TEditor } from "~/editor";
 import usePolicy from "~/hooks/usePolicy";
 import useStores from "~/hooks/useStores";
 import history from "~/utils/history";
+import lazyWithRetry from "~/utils/lazyWithRetry";
 import {
   searchPath,
   newDocumentPath,
@@ -25,18 +26,22 @@ import {
 } from "~/utils/routeHelpers";
 import Fade from "./Fade";
 
-const DocumentComments = React.lazy(
+const DocumentComments = lazyWithRetry(
   () => import("~/scenes/Document/components/Comments")
 );
-const DocumentHistory = React.lazy(
+const DocumentHistory = lazyWithRetry(
   () => import("~/scenes/Document/components/History")
 );
-const DocumentInsights = React.lazy(
+const DocumentInsights = lazyWithRetry(
   () => import("~/scenes/Document/components/Insights")
 );
-const CommandBar = React.lazy(() => import("~/components/CommandBar"));
+const CommandBar = lazyWithRetry(() => import("~/components/CommandBar"));
 
-const AuthenticatedLayout: React.FC = ({ children }) => {
+type Props = {
+  children?: React.ReactNode;
+};
+
+const AuthenticatedLayout: React.FC = ({ children }: Props) => {
   const { ui, auth } = useStores();
   const location = useLocation();
   const can = usePolicy(ui.activeCollectionId);
@@ -61,7 +66,7 @@ const AuthenticatedLayout: React.FC = ({ children }) => {
       return;
     }
     const { activeCollectionId } = ui;
-    if (!activeCollectionId || !can.update) {
+    if (!activeCollectionId || !can.createDocument) {
       return;
     }
     history.push(newDocumentPath(activeCollectionId));
@@ -91,11 +96,15 @@ const AuthenticatedLayout: React.FC = ({ children }) => {
   const showComments =
     !showInsights &&
     !showHistory &&
-    !ui.commentsCollapsed &&
+    ui.activeDocumentId &&
+    ui.commentsExpanded.includes(ui.activeDocumentId) &&
     team?.getPreference(TeamPreference.Commenting);
 
   const sidebarRight = (
-    <AnimatePresence>
+    <AnimatePresence
+      initial={false}
+      key={ui.activeDocumentId ? "active" : "inactive"}
+    >
       {(showHistory || showInsights || showComments) && (
         <Route path={`/doc/${slug}`}>
           <SidebarRight>
@@ -117,7 +126,9 @@ const AuthenticatedLayout: React.FC = ({ children }) => {
         <RegisterKeyDown trigger="t" handler={goToSearch} />
         <RegisterKeyDown trigger="/" handler={goToSearch} />
         {children}
-        <CommandBar />
+        <React.Suspense fallback={null}>
+          <CommandBar />
+        </React.Suspense>
       </Layout>
     </DocumentContext.Provider>
   );

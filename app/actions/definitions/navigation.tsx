@@ -6,14 +6,15 @@ import {
   EditIcon,
   OpenIcon,
   SettingsIcon,
-  ShapesIcon,
   KeyboardIcon,
   EmailIcon,
   LogoutIcon,
   ProfileIcon,
   BrowserIcon,
+  ShapesIcon,
 } from "outline-icons";
 import * as React from "react";
+import { isMac } from "@shared/utils/browser";
 import {
   developersUrl,
   changelogUrl,
@@ -26,19 +27,15 @@ import KeyboardShortcuts from "~/scenes/KeyboardShortcuts";
 import { createAction } from "~/actions";
 import { NavigationSection, RecentSearchesSection } from "~/actions/sections";
 import Desktop from "~/utils/Desktop";
-import { isMac } from "~/utils/browser";
 import history from "~/utils/history";
 import isCloudHosted from "~/utils/isCloudHosted";
 import {
-  organizationSettingsPath,
-  profileSettingsPath,
-  accountPreferencesPath,
   homePath,
   searchPath,
   draftsPath,
-  templatesPath,
   archivePath,
   trashPath,
+  settingsPath,
 } from "~/utils/routeHelpers";
 
 export const navigateToHome = createAction({
@@ -69,15 +66,6 @@ export const navigateToDrafts = createAction({
   visible: ({ location }) => location.pathname !== draftsPath(),
 });
 
-export const navigateToTemplates = createAction({
-  name: ({ t }) => t("Templates"),
-  analyticsName: "Navigate to templates",
-  section: NavigationSection,
-  icon: <ShapesIcon />,
-  perform: () => history.push(templatesPath()),
-  visible: ({ location }) => location.pathname !== templatesPath(),
-});
-
 export const navigateToArchive = createAction({
   name: ({ t }) => t("Archive"),
   analyticsName: "Navigate to archive",
@@ -105,7 +93,7 @@ export const navigateToSettings = createAction({
   icon: <SettingsIcon />,
   visible: ({ stores }) =>
     stores.policies.abilities(stores.auth.team?.id || "").update,
-  perform: () => history.push(organizationSettingsPath()),
+  perform: () => history.push(settingsPath()),
 });
 
 export const navigateToProfileSettings = createAction({
@@ -114,7 +102,25 @@ export const navigateToProfileSettings = createAction({
   section: NavigationSection,
   iconInContextMenu: false,
   icon: <ProfileIcon />,
-  perform: () => history.push(profileSettingsPath()),
+  perform: () => history.push(settingsPath()),
+});
+
+export const navigateToTemplateSettings = createAction({
+  name: ({ t }) => t("Templates"),
+  analyticsName: "Navigate to template settings",
+  section: NavigationSection,
+  iconInContextMenu: false,
+  icon: <ShapesIcon />,
+  perform: () => history.push(settingsPath("templates")),
+});
+
+export const navigateToNotificationSettings = createAction({
+  name: ({ t }) => t("Notifications"),
+  analyticsName: "Navigate to notification settings",
+  section: NavigationSection,
+  iconInContextMenu: false,
+  icon: <EmailIcon />,
+  perform: () => history.push(settingsPath("notifications")),
 });
 
 export const navigateToAccountPreferences = createAction({
@@ -123,7 +129,7 @@ export const navigateToAccountPreferences = createAction({
   section: NavigationSection,
   iconInContextMenu: false,
   icon: <SettingsIcon />,
-  perform: () => history.push(accountPreferencesPath()),
+  perform: () => history.push(settingsPath("preferences")),
 });
 
 export const openAPIDocumentation = createAction({
@@ -133,6 +139,14 @@ export const openAPIDocumentation = createAction({
   iconInContextMenu: false,
   icon: <OpenIcon />,
   perform: () => window.open(developersUrl()),
+});
+
+export const toggleSidebar = createAction({
+  name: ({ t }) => t("Toggle sidebar"),
+  analyticsName: "Toggle sidebar",
+  keywords: "hide show navigation",
+  section: NavigationSection,
+  perform: ({ stores }) => stores.ui.toggleCollapsedSidebar(),
 });
 
 export const openFeedbackUrl = createAction({
@@ -201,7 +215,6 @@ export const logout = createAction({
 export const rootNavigationActions = [
   navigateToHome,
   navigateToDrafts,
-  navigateToTemplates,
   navigateToArchive,
   navigateToTrash,
   downloadApp,
@@ -210,5 +223,6 @@ export const rootNavigationActions = [
   openBugReportUrl,
   openChangelog,
   openKeyboardShortcuts,
+  toggleSidebar,
   logout,
 ];

@@ -1,8 +1,18 @@
 import { subMinutes } from "date-fns";
-import { computed, observable } from "mobx";
+import { computed, action, observable } from "mobx";
 import { now } from "mobx-utils";
-import type { Role, UserPreference, UserPreferences } from "@shared/types";
-import ParanoidModel from "./ParanoidModel";
+import { UserPreferenceDefaults } from "@shared/constants";
+import {
+  NotificationEventDefaults,
+  NotificationEventType,
+  TeamPreference,
+  UserPreference,
+  UserPreferences,
+  UserRole,
+} from "@shared/types";
+import type { NotificationSettings } from "@shared/types";
+import { client } from "~/utils/ApiClient";
+import ParanoidModel from "./base/ParanoidModel";
 import Field from "./decorators/Field";
 
 class User extends ParanoidModel {
@@ -30,14 +40,23 @@ class User extends ParanoidModel {
   @observable
   preferences: UserPreferences | null;
 
+  @Field
+  @observable
+  notificationSettings: NotificationSettings;
+
+  @observable
   email: string;
 
+  @observable
   isAdmin: boolean;
 
+  @observable
   isViewer: boolean;
 
+  @observable
   lastActiveAt: string;
 
+  @observable
   isSuspended: boolean;
 
   @computed
@@ -62,26 +81,81 @@ class User extends ParanoidModel {
   }
 
   @computed
-  get role(): Role {
+  get role(): UserRole {
     if (this.isAdmin) {
-      return "admin";
+      return UserRole.Admin;
     } else if (this.isViewer) {
-      return "viewer";
+      return UserRole.Viewer;
     } else {
-      return "member";
+      return UserRole.Member;
     }
   }
+
+  /**
+   * Returns whether this user is using a separate editing mode behind an "Edit"
+   * button rather than seamless always-editing.
+   *
+   * @returns True if editing mode is seamless (no button)
+   */
+  @computed
+  get separateEditMode(): boolean {
+    return !this.getPreference(
+      UserPreference.SeamlessEdit,
+      this.store.rootStore.auth?.team?.getPreference(
+        TeamPreference.SeamlessEdit
+      )
+    );
+  }
+
+  /**
+   * Returns the current preference for the given notification event type taking
+   * into account the default system value.
+   *
+   * @param type The type of notification event
+   * @returns The current preference
+   */
+  public subscribedToEventType = (type: NotificationEventType) =>
+    this.notificationSettings[type] ?? NotificationEventDefaults[type] ?? false;
+
+  /**
+   * Sets a preference for the users notification settings on the model and
+   * saves the change to the server.
+   *
+   * @param type The type of notification event
+   * @param value Set the preference to true/false
+   */
+  @action
+  setNotificationEventType = async (
+    eventType: NotificationEventType,
+    value: boolean
+  ) => {
+    this.notificationSettings = {
+      ...this.notificationSettings,
+      [eventType]: value,
+    };
+
+    if (value) {
+      await client.post(`/users.notificationsSubscribe`, {
+        eventType,
+      });
+    } else {
+      await client.post(`/users.notificationsUnsubscribe`, {
+        eventType,
+      });
+    }
+  };
 
   /**
    * Get the value for a specific preference key, or return the fallback if
    * none is set.
    *
    * @param key The UserPreference key to retrieve
-   * @param fallback An optional fallback value, defaults to false.
    * @returns The value
    */
-  getPreference(key: UserPreference, fallback = false): boolean {
-    return this.preferences?.[key] ?? fallback;
+  getPreference(key: UserPreference, defaultValue = false): boolean {
+    return (
+      this.preferences?.[key] ?? UserPreferenceDefaults[key] ?? defaultValue
+    );
   }
 
   /**

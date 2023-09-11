@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import fs from "fs";
 import path from "path";
 import { URL } from "url";
@@ -20,6 +21,7 @@ import {
   AllowNull,
   AfterUpdate,
 } from "sequelize-typescript";
+import { TeamPreferenceDefaults } from "@shared/constants";
 import {
   CollectionPermission,
   TeamPreference,
@@ -68,9 +70,9 @@ class Team extends ParanoidModel {
   @Unique
   @Length({
     min: 2,
-    max: env.isCloudHosted() ? 32 : 255,
+    max: env.isCloudHosted ? 32 : 255,
     msg: `subdomain must be between 2 and ${
-      env.isCloudHosted() ? 32 : 255
+      env.isCloudHosted ? 32 : 255
     } characters`,
   })
   @Is({
@@ -136,10 +138,6 @@ class Team extends ParanoidModel {
   @Column
   memberCollectionCreate: boolean;
 
-  @Default(true)
-  @Column
-  collaborativeEditing: boolean;
-
   @Default("member")
   @IsIn([["viewer", "member"]])
   @Column
@@ -171,12 +169,28 @@ class Team extends ParanoidModel {
       return `${url.protocol}//${this.domain}${url.port ? `:${url.port}` : ""}`;
     }
 
-    if (!this.subdomain || !env.SUBDOMAINS_ENABLED) {
+    if (!this.subdomain || !env.isCloudHosted) {
       return env.URL;
     }
 
     url.host = `${this.subdomain}.${getBaseDomain()}`;
     return url.href.replace(/\/$/, "");
+  }
+
+  /**
+   * Returns a code that can be used to delete the user's team. The code will
+   * be rotated when the user signs out.
+   *
+   * @returns The deletion code.
+   */
+  public getDeleteConfirmationCode(user: User) {
+    return crypto
+      .createHash("md5")
+      .update(`${this.id}${user.jwtSecret}`)
+      .digest("hex")
+      .replace(/[l1IoO0]/gi, "")
+      .slice(0, 8)
+      .toUpperCase();
   }
 
   /**
@@ -200,15 +214,15 @@ class Team extends ParanoidModel {
   };
 
   /**
-   * Returns the passed preference value
+   * Returns the value of the given preference.
    *
-   * @param preference The user preference to retrieve
-   * @param fallback An optional fallback value, defaults to false.
-   * @returns The preference value if set, else undefined
+   * @param preference The team preference to retrieve
+   * @returns The preference value if set, else the default value
    */
-  public getPreference = (preference: TeamPreference, fallback = false) => {
-    return this.preferences?.[preference] ?? fallback;
-  };
+  public getPreference = (preference: TeamPreference) =>
+    this.preferences?.[preference] ??
+    TeamPreferenceDefaults[preference] ??
+    false;
 
   provisionFirstCollection = async (userId: string) => {
     await this.sequelize!.transaction(async (transaction) => {
@@ -255,7 +269,9 @@ class Team extends ParanoidModel {
           },
           { transaction }
         );
-        await document.publish(collection.createdById, { transaction });
+        await document.publish(collection.createdById, collection.id, {
+          transaction,
+        });
       }
     });
   };

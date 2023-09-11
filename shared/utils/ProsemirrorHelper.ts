@@ -1,5 +1,6 @@
-import { Node } from "prosemirror-model";
+import { Node, Schema } from "prosemirror-model";
 import headingToSlug from "../editor/lib/headingToSlug";
+import textBetween from "../editor/lib/textBetween";
 
 export type Heading = {
   /* The heading in plain text */
@@ -26,23 +27,64 @@ export type Task = {
 
 export default class ProsemirrorHelper {
   /**
+   * Returns the node as plain text.
+   *
+   * @param node The node to convert.
+   * @param schema The schema to use.
+   * @returns The document content as plain text without formatting.
+   */
+  static toPlainText(node: Node, schema: Schema) {
+    const textSerializers = Object.fromEntries(
+      Object.entries(schema.nodes)
+        .filter(([, node]) => node.spec.toPlainText)
+        .map(([name, node]) => [name, node.spec.toPlainText])
+    );
+
+    return textBetween(node, 0, node.content.size, textSerializers);
+  }
+
+  /**
    * Removes any empty paragraphs from the beginning and end of the document.
    *
    * @returns True if the editor is empty
    */
   static trim(doc: Node) {
-    const first = doc.firstChild;
-    const last = doc.lastChild;
-    const firstIsEmpty =
-      first?.type.name === "paragraph" && !first.textContent.trim();
-    const lastIsEmpty =
-      last?.type.name === "paragraph" && !last.textContent.trim();
-    const firstIsLast = first === last;
+    const { schema } = doc.type;
+    let index = 0,
+      start = 0,
+      end = doc.nodeSize - 2,
+      isEmpty;
 
-    return doc.cut(
-      firstIsEmpty ? first.nodeSize : 0,
-      lastIsEmpty && !firstIsLast ? doc.nodeSize - last.nodeSize : undefined
-    );
+    if (doc.childCount <= 1) {
+      return doc;
+    }
+
+    isEmpty = true;
+    while (isEmpty) {
+      const node = doc.maybeChild(index++);
+      if (!node) {
+        break;
+      }
+      isEmpty = ProsemirrorHelper.toPlainText(node, schema).trim() === "";
+      if (isEmpty) {
+        start += node.nodeSize;
+      }
+    }
+
+    index = doc.childCount - 1;
+    isEmpty = true;
+    while (isEmpty) {
+      const node = doc.maybeChild(index--);
+      if (!node) {
+        break;
+      }
+      isEmpty = ProsemirrorHelper.toPlainText(node, schema).trim() === "";
+      if (isEmpty) {
+        end -= node.nodeSize;
+      }
+    }
+
+    return doc.cut(start, end);
   }
 
   /**

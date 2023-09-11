@@ -1,8 +1,9 @@
+import type Model from "../base/Model";
+
 const fields = new Map();
 
-export const getFieldsForModel = (target: any) => {
-  return fields.get(target.constructor.name);
-};
+export const getFieldsForModel = (target: Model) =>
+  fields.get(target.constructor.name);
 
 /**
  * A decorator that records this key as a serializable field on the model.

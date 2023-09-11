@@ -5,8 +5,8 @@ dev-start:
 
 up:
 	docker-compose up -d redis postgres s3
+	yarn install-local-ssl
 	yarn install --pure-lockfile
-	yarn sequelize db:migrate
 	yarn dev:watch
 
 build:
@@ -16,14 +16,14 @@ test:
 	docker-compose up -d redis postgres s3
 	yarn sequelize db:drop --env=test
 	yarn sequelize db:create --env=test
-	yarn sequelize db:migrate --env=test
+	NODE_ENV=test yarn sequelize db:migrate --env=test
 	yarn test
 
 watch:
 	docker-compose up -d redis postgres s3
 	yarn sequelize db:drop --env=test
 	yarn sequelize db:create --env=test
-	yarn sequelize db:migrate --env=test
+	NODE_ENV=test yarn sequelize db:migrate --env=test
 	yarn test:watch
 
 destroy:

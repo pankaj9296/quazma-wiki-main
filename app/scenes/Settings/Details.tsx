@@ -1,5 +1,5 @@
 import { isHexColor } from "class-validator";
-import { pickBy } from "lodash";
+import pickBy from "lodash/pickBy";
 import { observer } from "mobx-react";
 import { TeamIcon } from "outline-icons";
 import { useRef, useState } from "react";
@@ -7,36 +7,46 @@ import * as React from "react";
 import { useTranslation, Trans } from "react-i18next";
 import { ThemeProvider, useTheme } from "styled-components";
 import { buildDarkTheme, buildLightTheme } from "@shared/styles/theme";
-import { CustomTheme } from "@shared/types";
+import { CustomTheme, TeamPreference } from "@shared/types";
 import { getBaseDomain } from "@shared/utils/domains";
 import Button from "~/components/Button";
+import ButtonLink from "~/components/ButtonLink";
 import DefaultCollectionInputSelect from "~/components/DefaultCollectionInputSelect";
 import Heading from "~/components/Heading";
 import Input from "~/components/Input";
 import InputColor from "~/components/InputColor";
 import Scene from "~/components/Scene";
+import Switch from "~/components/Switch";
 import Text from "~/components/Text";
-import env from "~/env";
 import useCurrentTeam from "~/hooks/useCurrentTeam";
+import usePolicy from "~/hooks/usePolicy";
 import useStores from "~/hooks/useStores";
 import useToasts from "~/hooks/useToasts";
 import isCloudHosted from "~/utils/isCloudHosted";
+import TeamDelete from "../TeamDelete";
 import ImageInput from "./components/ImageInput";
 import SettingRow from "./components/SettingRow";
 
 function Details() {
-  const { auth, ui } = useStores();
+  const { auth, dialogs, ui } = useStores();
   const { showToast } = useToasts();
   const { t } = useTranslation();
   const team = useCurrentTeam();
   const theme = useTheme();
+  const can = usePolicy(team);
+
   const form = useRef<HTMLFormElement>(null);
-  const [accent, setAccent] = useState(team.preferences?.customTheme?.accent);
-  const [accentText, setAccentText] = useState(
+  const [accent, setAccent] = useState<null | undefined | string>(
+    team.preferences?.customTheme?.accent
+  );
+  const [accentText, setAccentText] = useState<null | undefined | string>(
     team.preferences?.customTheme?.accentText
   );
   const [name, setName] = useState(team.name);
   const [subdomain, setSubdomain] = useState(team.subdomain);
+  const [publicBranding, setPublicBranding] = useState(
+    team.preferences?.publicBranding
+  );
   const [defaultCollectionId, setDefaultCollectionId] = useState<string | null>(
     team.defaultCollectionId
   );
@@ -62,6 +72,7 @@ function Details() {
           defaultCollectionId,
           preferences: {
             ...team.preferences,
+            publicBranding,
             customTheme,
           },
         });
@@ -80,6 +91,7 @@ function Details() {
       subdomain,
       defaultCollectionId,
       team.preferences,
+      publicBranding,
       customTheme,
       showToast,
       t,
@@ -116,6 +128,14 @@ function Details() {
     [showToast, t]
   );
 
+  const showDeleteWorkspace = () => {
+    dialogs.openModal({
+      title: t("Delete workspace"),
+      content: <TeamDelete onSubmit={dialogs.closeAllModals} />,
+      isCentered: true,
+    });
+  };
+
   const onSelectCollection = React.useCallback(async (value: string) => {
     const defaultCollectionId = value === "home" ? null : value;
     setDefaultCollectionId(defaultCollectionId);
@@ -133,7 +153,7 @@ function Details() {
 
   return (
     <ThemeProvider theme={newTheme}>
-      <Scene title={t("Details")} icon={<TeamIcon color="currentColor" />}>
+      <Scene title={t("Details")} icon={<TeamIcon />}>
         <Heading>{t("Details")}</Heading>
         <Text type="secondary">
           <Trans>
@@ -177,7 +197,24 @@ function Details() {
             border={false}
             label={t("Theme")}
             name="accent"
-            description={t("Customize the interface look and feel.")}
+            description={
+              <>
+                {t("Customize the interface look and feel.")}{" "}
+                {accent && (
+                  <>
+                    <ButtonLink
+                      onClick={() => {
+                        setAccent(null);
+                        setAccentText(null);
+                      }}
+                    >
+                      {t("Reset theme")}
+                    </ButtonLink>
+                    .
+                  </>
+                )}
+              </>
+            }
           >
             <InputColor
               id="accent"
@@ -194,11 +231,30 @@ function Details() {
               flex
             />
           </SettingRow>
+          {team.avatarUrl && (
+            <SettingRow
+              border={false}
+              name={TeamPreference.PublicBranding}
+              label={t("Public branding")}
+              description={t(
+                "Show your team’s logo on public pages like login and shared documents."
+              )}
+            >
+              <Switch
+                id={TeamPreference.PublicBranding}
+                name={TeamPreference.PublicBranding}
+                checked={publicBranding}
+                onChange={(event: React.ChangeEvent<HTMLInputElement>) =>
+                  setPublicBranding(event.target.checked)
+                }
+              />
+            </SettingRow>
+          )}
 
           <Heading as="h2">{t("Behavior")}</Heading>
 
           <SettingRow
-            visible={env.SUBDOMAINS_ENABLED && isCloudHosted}
+            visible={isCloudHosted}
             label={t("Subdomain")}
             name="subdomain"
             description={
@@ -243,6 +299,28 @@ function Details() {
           <Button type="submit" disabled={auth.isSaving || !isValid}>
             {auth.isSaving ? `${t("Saving")}…` : t("Save")}
           </Button>
+
+          {can.delete && (
+            <>
+              <p>&nbsp;</p>
+
+              <Heading as="h2">{t("Danger")}</Heading>
+              <SettingRow
+                name="delete"
+                border={false}
+                label={t("Delete workspace")}
+                description={t(
+                  "You can delete this entire workspace including collections, documents, and users."
+                )}
+              >
+                <span>
+                  <Button onClick={showDeleteWorkspace} neutral>
+                    {t("Delete workspace")}…
+                  </Button>
+                </span>
+              </SettingRow>
+            </>
+          )}
         </form>
       </Scene>
     </ThemeProvider>

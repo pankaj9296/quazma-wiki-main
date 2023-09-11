@@ -1,10 +1,11 @@
 import { computed, observable } from "mobx";
+import { TeamPreferenceDefaults } from "@shared/constants";
 import { TeamPreference, TeamPreferences } from "@shared/types";
 import { stringToColor } from "@shared/utils/color";
-import BaseModel from "./BaseModel";
+import Model from "./base/Model";
 import Field from "./decorators/Field";
 
-class Team extends BaseModel {
+class Team extends Model {
   @Field
   @observable
   id: string;
@@ -24,10 +25,6 @@ class Team extends BaseModel {
   @Field
   @observable
   inviteRequired: boolean;
-
-  @Field
-  @observable
-  collaborativeEditing: boolean;
 
   @Field
   @observable
@@ -61,8 +58,10 @@ class Team extends BaseModel {
   @observable
   preferences: TeamPreferences | null;
 
+  @observable
   domain: string | null | undefined;
 
+  @observable
   url: string;
 
   @Field
@@ -85,32 +84,21 @@ class Team extends BaseModel {
   }
 
   /**
-   * Returns whether this team is using a separate editing mode behind an "Edit"
-   * button rather than seamless always-editing.
+   * Returns the value of the provided preference.
    *
-   * @returns True if editing mode is seamless (no button)
-   */
-  @computed
-  get seamlessEditing(): boolean {
-    return (
-      this.collaborativeEditing &&
-      !!this.getPreference(TeamPreference.SeamlessEdit, true)
-    );
-  }
-
-  /**
-   * Get the value for a specific preference key, or return the fallback if
-   * none is set.
-   *
-   * @param key The TeamPreference key to retrieve
-   * @param fallback An optional fallback value, defaults to false.
-   * @returns The value
+   * @param preference The team preference to retrieve
+   * @returns The preference value if set, else the default value
    */
   getPreference<T extends keyof TeamPreferences>(
     key: T,
-    fallback = false
+    defaultValue?: TeamPreferences[T]
   ): TeamPreferences[T] | false {
-    return this.preferences?.[key] ?? fallback;
+    return (
+      this.preferences?.[key] ??
+      TeamPreferenceDefaults[key] ??
+      defaultValue ??
+      false
+    );
   }
 
   /**

@@ -1,4 +1,4 @@
-import { FindOptions, Op } from "sequelize";
+import { Op, SaveOptions } from "sequelize";
 import {
   DataType,
   BelongsTo,
@@ -49,6 +49,13 @@ class Revision extends IdModel {
   @Column(DataType.TEXT)
   text: string;
 
+  @Length({
+    max: 1,
+    msg: `Emoji must be a single character`,
+  })
+  @Column
+  emoji: string | null;
+
   // associations
 
   @BelongsTo(() => Document, "documentId")
@@ -65,6 +72,14 @@ class Revision extends IdModel {
   @Column(DataType.UUID)
   userId: string;
 
+  // static methods
+
+  /**
+   * Find the latest revision for a given document
+   *
+   * @param documentId The document id to find the latest revision for
+   * @returns A Promise that resolves to a Revision model
+   */
   static findLatest(documentId: string) {
     return this.findOne({
       where: {
@@ -74,24 +89,40 @@ class Revision extends IdModel {
     });
   }
 
+  /**
+   * Build a Revision model from a Document model
+   *
+   * @param document The document to build from
+   * @returns A Revision model
+   */
+  static buildFromDocument(document: Document) {
+    return this.build({
+      title: document.title,
+      text: document.text,
+      emoji: document.emoji,
+      userId: document.lastModifiedById,
+      editorVersion: document.editorVersion,
+      version: document.version,
+      documentId: document.id,
+      // revision time is set to the last time document was touched as this
+      // handler can be debounced in the case of an update
+      createdAt: document.updatedAt,
+    });
+  }
+
+  /**
+   * Create a Revision model from a Document model and save it to the database
+   *
+   * @param document The document to create from
+   * @param options Options passed to the save method
+   * @returns A Promise that resolves when saved
+   */
   static createFromDocument(
     document: Document,
-    options?: FindOptions<Revision>
+    options?: SaveOptions<Revision>
   ) {
-    return this.create(
-      {
-        title: document.title,
-        text: document.text,
-        userId: document.lastModifiedById,
-        editorVersion: document.editorVersion,
-        version: document.version,
-        documentId: document.id,
-        // revision time is set to the last time document was touched as this
-        // handler can be debounced in the case of an update
-        createdAt: document.updatedAt,
-      },
-      options
-    );
+    const revision = this.buildFromDocument(document);
+    return revision.save(options);
   }
 
   // instance methods

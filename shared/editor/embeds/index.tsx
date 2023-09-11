@@ -1,14 +1,16 @@
 import { EditorState } from "prosemirror-state";
 import * as React from "react";
 import styled from "styled-components";
+import { Primitive } from "utility-types";
 import { IntegrationType } from "../../types";
 import type { IntegrationSettings } from "../../types";
 import { urlRegex } from "../../utils/urls";
-import Image from "../components/Image";
+import Image from "../components/Img";
 import Abstract from "./Abstract";
 import Airtable from "./Airtable";
 import Berrycast from "./Berrycast";
 import Bilibili from "./Bilibili";
+import Canva from "./Canva";
 import Cawemo from "./Cawemo";
 import ClickUp from "./ClickUp";
 import Codepen from "./Codepen";
@@ -20,11 +22,12 @@ import Framer from "./Framer";
 import Gist from "./Gist";
 import Gliffy from "./Gliffy";
 import GoogleCalendar from "./GoogleCalendar";
-import GoogleDataStudio from "./GoogleDataStudio";
 import GoogleDocs from "./GoogleDocs";
 import GoogleDrawings from "./GoogleDrawings";
 import GoogleDrive from "./GoogleDrive";
 import GoogleForms from "./GoogleForms";
+import GoogleLookerStudio from "./GoogleLookerStudio";
+import GoogleMaps from "./GoogleMaps";
 import GoogleSheets from "./GoogleSheets";
 import GoogleSlides from "./GoogleSlides";
 import Grist from "./Grist";
@@ -44,6 +47,7 @@ import Spotify from "./Spotify";
 import Tldraw from "./Tldraw";
 import Trello from "./Trello";
 import Typeform from "./Typeform";
+import Valtown from "./Valtown";
 import Vimeo from "./Vimeo";
 import Whimsical from "./Whimsical";
 import YouTube from "./YouTube";
@@ -75,7 +79,7 @@ export class EmbedDescriptor {
   keywords?: string;
   tooltip?: string;
   defaultHidden?: boolean;
-  attrs?: Record<string, any>;
+  attrs?: Record<string, Primitive>;
   visible?: boolean;
   active?: (state: EditorState) => boolean;
   component: typeof React.Component | React.FC<any>;
@@ -151,6 +155,12 @@ const embeds: EmbedDescriptor[] = [
     component: Bilibili,
   }),
   new EmbedDescriptor({
+    title: "Canva",
+    keywords: "design",
+    icon: <Img src="/images/canva.png" alt="Canva" />,
+    component: Canva,
+  }),
+  new EmbedDescriptor({
     title: "Cawemo",
     keywords: "bpmn process",
     defaultHidden: true,
@@ -212,6 +222,13 @@ const embeds: EmbedDescriptor[] = [
     component: Diagrams,
   }),
   new EmbedDescriptor({
+    title: "Google Maps",
+    keywords: "maps",
+    icon: <Img src="/images/google-maps.png" alt="Google Maps" />,
+    component: GoogleMaps,
+    visible: true,
+  }),
+  new EmbedDescriptor({
     title: "Google Drawings",
     keywords: "drawings",
     icon: <Img src="/images/google-drawings.png" alt="Google Drawings" />,
@@ -248,10 +265,12 @@ const embeds: EmbedDescriptor[] = [
     component: GoogleCalendar,
   }),
   new EmbedDescriptor({
-    title: "Google Data Studio",
+    title: "Google Looker Studio",
     keywords: "bi business intelligence",
-    icon: <Img src="/images/google-datastudio.png" alt="Google Data Studio" />,
-    component: GoogleDataStudio,
+    icon: (
+      <Img src="/images/google-lookerstudio.png" alt="Google Looker Studio" />
+    ),
+    component: GoogleLookerStudio,
   }),
   new EmbedDescriptor({
     title: "Google Forms",
@@ -351,7 +370,6 @@ const embeds: EmbedDescriptor[] = [
   new EmbedDescriptor({
     title: "Tldraw",
     keywords: "draw schematics diagrams",
-    visible: false,
     icon: <Img src="/images/tldraw.png" alt="Tldraw" />,
     component: Tldraw,
   }),
@@ -366,6 +384,12 @@ const embeds: EmbedDescriptor[] = [
     keywords: "form survey",
     icon: <Img src="/images/typeform.png" alt="Typeform" />,
     component: Typeform,
+  }),
+  new EmbedDescriptor({
+    title: "Valtown",
+    keywords: "code",
+    icon: <Img src="/images/valtown.png" alt="Valtown" />,
+    component: Valtown,
   }),
   new EmbedDescriptor({
     title: "Vimeo",

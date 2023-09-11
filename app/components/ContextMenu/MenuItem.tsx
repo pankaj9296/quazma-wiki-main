@@ -5,9 +5,10 @@ import { mergeRefs } from "react-merge-refs";
 import { MenuItem as BaseMenuItem } from "reakit/Menu";
 import styled, { css } from "styled-components";
 import breakpoint from "styled-components-breakpoint";
-import MenuIconWrapper from "../MenuIconWrapper";
+import MenuIconWrapper from "./MenuIconWrapper";
 
 type Props = {
+  id?: string;
   onClick?: (event: React.SyntheticEvent) => void | Promise<void>;
   active?: boolean;
   selected?: boolean;
@@ -21,6 +22,7 @@ type Props = {
   level?: number;
   icon?: React.ReactElement;
   children?: React.ReactNode;
+  ref?: React.LegacyRef<HTMLButtonElement> | undefined;
 };
 
 const MenuItem = (
@@ -37,34 +39,26 @@ const MenuItem = (
   }: Props,
   ref: React.Ref<HTMLAnchorElement>
 ) => {
-  const handleClick = React.useCallback(
-    (ev) => {
-      if (onClick) {
+  const content = React.useCallback(
+    (props) => {
+      const handleClick = async (ev: React.MouseEvent) => {
+        hide?.();
+
+        if (onClick) {
+          ev.preventDefault();
+          await onClick(ev);
+        }
+      };
+
+      // Preventing default mousedown otherwise menu items do not work in Firefox,
+      // which triggers the hideOnClickOutside handler first via mousedown – hiding
+      // and un-rendering the menu contents.
+      const handleMouseDown = (ev: React.MouseEvent) => {
         ev.preventDefault();
-        onClick(ev);
-      }
+        ev.stopPropagation();
+      };
 
-      hide?.();
-    },
-    [onClick, hide]
-  );
-
-  // Preventing default mousedown otherwise menu items do not work in Firefox,
-  // which triggers the hideOnClickOutside handler first via mousedown – hiding
-  // and un-rendering the menu contents.
-  const handleMouseDown = React.useCallback((ev) => {
-    ev.preventDefault();
-    ev.stopPropagation();
-  }, []);
-
-  return (
-    <BaseMenuItem
-      onClick={disabled ? undefined : onClick}
-      disabled={disabled}
-      hide={hide}
-      {...rest}
-    >
-      {(props) => (
+      return (
         <MenuAnchor
           {...props}
           $active={active}
@@ -78,18 +72,26 @@ const MenuItem = (
         >
           {selected !== undefined && (
             <>
-              {selected ? <CheckmarkIcon color="currentColor" /> : <Spacer />}
+              {selected ? <CheckmarkIcon /> : <Spacer />}
               &nbsp;
             </>
           )}
-          {icon && (
-            <MenuIconWrapper>
-              {React.cloneElement(icon, { color: "currentColor" })}
-            </MenuIconWrapper>
-          )}
+          {icon && <MenuIconWrapper>{icon}</MenuIconWrapper>}
           {children}
         </MenuAnchor>
-      )}
+      );
+    },
+    [active, as, hide, icon, onClick, ref, children, selected]
+  );
+
+  return (
+    <BaseMenuItem
+      onClick={disabled ? undefined : onClick}
+      disabled={disabled}
+      hide={hide}
+      {...rest}
+    >
+      {content}
     </BaseMenuItem>
   );
 };

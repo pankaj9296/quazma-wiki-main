@@ -3,7 +3,7 @@ import * as React from "react";
 import { useTranslation } from "react-i18next";
 import { mergeRefs } from "react-merge-refs";
 import { useHistory, useRouteMatch } from "react-router-dom";
-import fullWithCommentsPackage from "@shared/editor/packages/fullWithComments";
+import { richExtensions, withComments } from "@shared/editor/nodes";
 import { TeamPreference } from "@shared/types";
 import Comment from "~/models/Comment";
 import Document from "~/models/Document";
@@ -11,19 +11,24 @@ import { RefHandle } from "~/components/ContentEditable";
 import Editor, { Props as EditorProps } from "~/components/Editor";
 import Flex from "~/components/Flex";
 import useFocusedComment from "~/hooks/useFocusedComment";
+import useMobile from "~/hooks/useMobile";
+import usePolicy from "~/hooks/usePolicy";
 import useStores from "~/hooks/useStores";
 import {
-  documentHistoryUrl,
-  documentUrl,
+  documentHistoryPath,
+  documentPath,
   matchDocumentHistory,
 } from "~/utils/routeHelpers";
 import { useDocumentContext } from "../../../components/DocumentContext";
 import MultiplayerEditor from "./AsyncMultiplayerEditor";
 import DocumentMeta from "./DocumentMeta";
-import EditableTitle from "./EditableTitle";
+import DocumentTitle from "./DocumentTitle";
 
-type Props = Omit<EditorProps, "extensions"> & {
-  onChangeTitle: (text: string) => void;
+const extensions = withComments(richExtensions);
+
+type Props = Omit<EditorProps, "extensions" | "editorStyle"> & {
+  onChangeTitle: (title: string) => void;
+  onChangeEmoji: (emoji: string | null) => void;
   id: string;
   document: Document;
   isDraft: boolean;
@@ -44,6 +49,7 @@ function DocumentEditor(props: Props, ref: React.RefObject<any>) {
   const titleRef = React.useRef<RefHandle>(null);
   const { t } = useTranslation();
   const match = useRouteMatch();
+  const isMobile = useMobile();
   const focusedComment = useFocusedComment();
   const { ui, comments, auth } = useStores();
   const { user, team } = auth;
@@ -51,6 +57,7 @@ function DocumentEditor(props: Props, ref: React.RefObject<any>) {
   const {
     document,
     onChangeTitle,
+    onChangeEmoji,
     isDraft,
     shareId,
     readOnly,
@@ -58,6 +65,7 @@ function DocumentEditor(props: Props, ref: React.RefObject<any>) {
     multiplayer,
     ...rest
   } = props;
+  const can = usePolicy(document.id);
 
   const childRef = React.useRef<HTMLDivElement>(null);
   const focusAtStart = React.useCallback(() => {
@@ -65,6 +73,12 @@ function DocumentEditor(props: Props, ref: React.RefObject<any>) {
       ref.current.focusAtStart();
     }
   }, [ref]);
+
+  React.useEffect(() => {
+    if (focusedComment) {
+      ui.expandComments(document.id);
+    }
+  }, [focusedComment, ui, document.id]);
 
   // Save document when blurring title, but delay so that if clicking on a
   // button this is allowed to execute first.
@@ -87,13 +101,12 @@ function DocumentEditor(props: Props, ref: React.RefObject<any>) {
 
   const handleClickComment = React.useCallback(
     (commentId: string) => {
-      ui.expandComments();
       history.replace({
         pathname: window.location.pathname.replace(/\/history$/, ""),
         state: { commentId },
       });
     },
-    [ui, history]
+    [history]
   );
 
   // Create a Comment model in local store when a comment mark is created, this
@@ -115,13 +128,12 @@ function DocumentEditor(props: Props, ref: React.RefObject<any>) {
       comment.id = commentId;
       comments.add(comment);
 
-      ui.expandComments();
       history.replace({
         pathname: window.location.pathname.replace(/\/history$/, ""),
         state: { commentId },
       });
     },
-    [comments, user?.id, props.id, ui, history]
+    [comments, user?.id, props.id, history]
   );
 
   // Soft delete the Comment model when associated mark is totally removed.
@@ -141,14 +153,20 @@ function DocumentEditor(props: Props, ref: React.RefObject<any>) {
 
   return (
     <Flex auto column>
-      <EditableTitle
+      <DocumentTitle
         ref={titleRef}
         readOnly={readOnly}
-        document={document}
+        documentId={document.id}
+        title={
+          !document.title && readOnly
+            ? document.titleWithDefault
+            : document.title
+        }
+        emoji={document.emoji}
+        onChangeTitle={onChangeTitle}
+        onChangeEmoji={onChangeEmoji}
         onGoToNextInput={handleGoToNextInput}
-        onChange={onChangeTitle}
         onBlur={handleBlur}
-        starrable={!shareId}
         placeholder={t("Untitled")}
       />
       {!shareId && (
@@ -157,8 +175,8 @@ function DocumentEditor(props: Props, ref: React.RefObject<any>) {
           document={document}
           to={
             match.path === matchDocumentHistory
-              ? documentUrl(document)
-              : documentHistoryUrl(document)
+              ? documentPath(document)
+              : documentHistoryPath(document)
           }
           rtl={
             titleRef.current?.getComputedDirection() === "rtl" ? true : false
@@ -176,17 +194,23 @@ function DocumentEditor(props: Props, ref: React.RefObject<any>) {
         focusedCommentId={focusedComment?.id}
         onClickCommentMark={handleClickComment}
         onCreateCommentMark={
-          team?.getPreference(TeamPreference.Commenting)
+          team?.getPreference(TeamPreference.Commenting) && can.comment
             ? handleDraftComment
             : undefined
         }
         onDeleteCommentMark={
-          team?.getPreference(TeamPreference.Commenting)
+          team?.getPreference(TeamPreference.Commenting) && can.comment
             ? handleRemoveComment
             : undefined
         }
-        extensions={fullWithCommentsPackage}
-        bottomPadding={`calc(50vh - ${childRef.current?.offsetHeight || 0}px)`}
+        extensions={extensions}
+        editorStyle={{
+          padding: document.fullWidth || isMobile ? "0 32px" : "0 64px",
+          margin: document.fullWidth || isMobile ? "0 -32px" : "0 -64px",
+          paddingBottom: `calc(50vh - ${
+            childRef.current?.offsetHeight || 0
+          }px)`,
+        }}
         {...rest}
       />
       <div ref={childRef}>{children}</div>

@@ -4,8 +4,8 @@ import { useTranslation } from "react-i18next";
 export default function useDictionary() {
   const { t } = useTranslation();
 
-  return React.useMemo(() => {
-    return {
+  return React.useMemo(
+    () => ({
       addColumnAfter: t("Insert column after"),
       addColumnBefore: t("Insert column before"),
       addRowAfter: t("Insert row after"),
@@ -76,11 +76,16 @@ export default function useDictionary() {
       showSource: t("Show source"),
       warning: t("Warning"),
       warningNotice: t("Warning notice"),
+      success: t("Success"),
+      successNotice: t("Success notice"),
       insertDate: t("Current date"),
       insertTime: t("Current time"),
       insertDateTime: t("Current date and time"),
-    };
-  }, [t]);
+      indent: t("Indent"),
+      outdent: t("Outdent"),
+    }),
+    [t]
+  );
 }
 
 export type Dictionary = ReturnType<typeof useDictionary>;

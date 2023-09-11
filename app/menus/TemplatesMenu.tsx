@@ -4,11 +4,13 @@ import * as React from "react";
 import { useTranslation } from "react-i18next";
 import { MenuButton, useMenuState } from "reakit/Menu";
 import styled from "styled-components";
+import { ellipsis } from "@shared/styles";
 import Document from "~/models/Document";
 import Button from "~/components/Button";
 import ContextMenu from "~/components/ContextMenu";
 import MenuItem from "~/components/ContextMenu/MenuItem";
 import Separator from "~/components/ContextMenu/Separator";
+import EmojiIcon from "~/components/Icons/EmojiIcon";
 import useCurrentUser from "~/hooks/useCurrentUser";
 import useStores from "~/hooks/useStores";
 import { replaceTitleVariables } from "~/utils/date";
@@ -42,7 +44,9 @@ function TemplatesMenu({ onSelectTemplate, document }: Props) {
     <MenuItem
       key={template.id}
       onClick={() => onSelectTemplate(template)}
-      icon={<DocumentIcon />}
+      icon={
+        template.emoji ? <EmojiIcon emoji={template.emoji} /> : <DocumentIcon />
+      }
       {...menu}
     >
       <TemplateItem>
@@ -81,9 +85,7 @@ function TemplatesMenu({ onSelectTemplate, document }: Props) {
 
 const TemplateItem = styled.div`
   text-align: left;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  ${ellipsis()}
 `;
 
 const Author = styled.div`

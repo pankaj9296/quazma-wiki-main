@@ -2,12 +2,13 @@ import { observer } from "mobx-react";
 import * as React from "react";
 import { Trans, useTranslation } from "react-i18next";
 import styled from "styled-components";
-import { FileOperationFormat } from "@shared/types";
+import { FileOperationFormat, NotificationEventType } from "@shared/types";
 import Collection from "~/models/Collection";
 import ConfirmationDialog from "~/components/ConfirmationDialog";
 import Flex from "~/components/Flex";
 import Text from "~/components/Text";
 import env from "~/env";
+import useCurrentUser from "~/hooks/useCurrentUser";
 import useStores from "~/hooks/useStores";
 import useToasts from "~/hooks/useToasts";
 
@@ -20,14 +21,13 @@ function ExportDialog({ collection, onSubmit }: Props) {
   const [format, setFormat] = React.useState<FileOperationFormat>(
     FileOperationFormat.MarkdownZip
   );
+  const [includeAttachments, setIncludeAttachments] =
+    React.useState<boolean>(true);
+  const user = useCurrentUser();
   const { showToast } = useToasts();
-  const { collections, notificationSettings } = useStores();
+  const { collections } = useStores();
   const { t } = useTranslation();
   const appName = env.APP_NAME;
-
-  React.useEffect(() => {
-    notificationSettings.fetchPage({});
-  }, [notificationSettings]);
 
   const handleFormatChange = React.useCallback(
     (ev: React.ChangeEvent<HTMLInputElement>) => {
@@ -36,11 +36,18 @@ function ExportDialog({ collection, onSubmit }: Props) {
     []
   );
 
+  const handleIncludeAttachmentsChange = React.useCallback(
+    (ev: React.ChangeEvent<HTMLInputElement>) => {
+      setIncludeAttachments(ev.target.checked);
+    },
+    []
+  );
+
   const handleSubmit = async () => {
     if (collection) {
-      await collection.export(format);
+      await collection.export(format, includeAttachments);
     } else {
-      await collections.export(format);
+      await collections.export(format, includeAttachments);
     }
     onSubmit();
     showToast(t("Export started"), { type: "success" });
@@ -86,13 +93,13 @@ function ExportDialog({ collection, onSubmit }: Props) {
               em: <strong />,
             }}
           />{" "}
-          {notificationSettings.getByEvent("emails.export_completed") &&
+          {user.subscribedToEventType(NotificationEventType.ExportCompleted) &&
             t("You will receive an email when it's complete.")}
         </Text>
       )}
       <Flex gap={12} column>
         {items.map((item) => (
-          <Option>
+          <Option key={item.value}>
             <input
               type="radio"
               name="format"
@@ -109,6 +116,23 @@ function ExportDialog({ collection, onSubmit }: Props) {
           </Option>
         ))}
       </Flex>
+      <hr />
+      <Option>
+        <input
+          type="checkbox"
+          name="includeAttachments"
+          checked={includeAttachments}
+          onChange={handleIncludeAttachmentsChange}
+        />
+        <div>
+          <Text size="small" weight="bold">
+            {t("Include attachments")}
+          </Text>
+          <Text size="small">
+            {t("Including uploaded images and files in the exported data")}.
+          </Text>{" "}
+        </div>
+      </Option>
     </ConfirmationDialog>
   );
 }

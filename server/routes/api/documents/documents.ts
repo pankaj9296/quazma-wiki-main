@@ -1,18 +1,21 @@
+import path from "path";
 import fs from "fs-extra";
 import invariant from "invariant";
+import JSZip from "jszip";
 import Router from "koa-router";
+import escapeRegExp from "lodash/escapeRegExp";
 import mime from "mime-types";
 import { Op, ScopeOptions, WhereOptions } from "sequelize";
 import { TeamPreference } from "@shared/types";
 import { subtractDate } from "@shared/utils/date";
 import { bytesToHumanReadable } from "@shared/utils/files";
+import slugify from "@shared/utils/slugify";
 import documentCreator from "@server/commands/documentCreator";
 import documentImporter from "@server/commands/documentImporter";
 import documentLoader from "@server/commands/documentLoader";
 import documentMover from "@server/commands/documentMover";
 import documentPermanentDeleter from "@server/commands/documentPermanentDeleter";
 import documentUpdater from "@server/commands/documentUpdater";
-import { sequelize } from "@server/database/sequelize";
 import env from "@server/env";
 import {
   NotFoundError,
@@ -21,10 +24,13 @@ import {
   ValidationError,
   IncorrectEditionError,
 } from "@server/errors";
+import Logger from "@server/logging/Logger";
 import auth from "@server/middlewares/authentication";
 import { rateLimiter } from "@server/middlewares/rateLimiter";
+import { transaction } from "@server/middlewares/transaction";
 import validate from "@server/middlewares/validate";
 import {
+  Attachment,
   Backlink,
   Collection,
   Document,
@@ -42,12 +48,14 @@ import {
   presentDocument,
   presentPolicies,
   presentPublicTeam,
+  presentUser,
 } from "@server/presenters";
 import { APIContext } from "@server/types";
 import { RateLimiterStrategy } from "@server/utils/RateLimiter";
+import ZipHelper from "@server/utils/ZipHelper";
 import { getFileFromRequest } from "@server/utils/koa";
+import parseAttachmentIds from "@server/utils/parseAttachmentIds";
 import { getTeamFromContext } from "@server/utils/passport";
-import slugify from "@server/utils/slugify";
 import { assertPresent } from "@server/validation";
 import pagination from "../middlewares/pagination";
 import * as T from "./schema";
@@ -97,7 +105,7 @@ router.post(
       const collection = await Collection.scope({
         method: ["withMembership", user.id],
       }).findByPk(collectionId);
-      authorize(user, "read", collection);
+      authorize(user, "readDocument", collection);
 
       // index sort is special because it uses the order of the documents in the
       // collection.documentStructure rather than a database column
@@ -341,7 +349,7 @@ router.post(
       const collection = await Collection.scope({
         method: ["withMembership", user.id],
       }).findByPk(collectionId);
-      authorize(user, "read", collection);
+      authorize(user, "readDocument", collection);
     }
 
     const collectionIds = collectionId
@@ -436,6 +444,67 @@ router.post(
 );
 
 router.post(
+  "documents.users",
+  auth(),
+  pagination(),
+  validate(T.DocumentsUsersSchema),
+  async (ctx: APIContext<T.DocumentsUsersReq>) => {
+    const { id, query } = ctx.input.body;
+    const actor = ctx.state.auth.user;
+    const { offset, limit } = ctx.state.pagination;
+    const document = await Document.findByPk(id, {
+      userId: actor.id,
+    });
+    authorize(actor, "read", document);
+
+    let users: User[] = [];
+    let total = 0;
+    let where: WhereOptions<User> = {
+      teamId: document.teamId,
+      suspendedAt: {
+        [Op.is]: null,
+      },
+    };
+
+    if (document.collectionId) {
+      const collection = await document.$get("collection");
+
+      if (!collection?.permission) {
+        const memberIds = await Collection.membershipUserIds(
+          document.collectionId
+        );
+        where = {
+          ...where,
+          id: {
+            [Op.in]: memberIds,
+          },
+        };
+      }
+
+      if (query) {
+        where = {
+          ...where,
+          name: {
+            [Op.iLike]: `%${query}%`,
+          },
+        };
+      }
+
+      [users, total] = await Promise.all([
+        User.findAll({ where, offset, limit }),
+        User.count({ where }),
+      ]);
+    }
+
+    ctx.body = {
+      pagination: { ...ctx.state.pagination, total },
+      data: users.map((user) => presentUser(user)),
+      policies: presentPolicies(actor, users),
+    };
+  }
+);
+
+router.post(
   "documents.export",
   rateLimiter(RateLimiterStrategy.FivePerMinute),
   auth({
@@ -454,8 +523,8 @@ router.post(
       includeState: !accept?.includes("text/markdown"),
     });
 
-    let contentType;
-    let content;
+    let contentType: string;
+    let content: string;
 
     if (accept?.includes("text/html")) {
       contentType = "text/html";
@@ -475,21 +544,70 @@ router.post(
       content = DocumentHelper.toMarkdown(document);
     }
 
-    if (contentType !== "application/json") {
+    if (contentType === "application/json") {
+      ctx.body = {
+        data: content,
+      };
+      return;
+    }
+
+    // Override the extension for Markdown as it's incorrect in the mime-types
+    // library until a new release > 2.1.35
+    const extension =
+      contentType === "text/markdown" ? "md" : mime.extension(contentType);
+
+    const fileName = slugify(document.titleWithDefault);
+    const attachmentIds = parseAttachmentIds(document.text);
+    const attachments = attachmentIds.length
+      ? await Attachment.findAll({
+          where: {
+            teamId: document.teamId,
+            id: attachmentIds,
+          },
+        })
+      : [];
+
+    if (attachments.length === 0) {
       ctx.set("Content-Type", contentType);
-      ctx.set(
-        "Content-Disposition",
-        `attachment; filename="${slugify(
-          document.titleWithDefault
-        )}.${mime.extension(contentType)}"`
-      );
+      ctx.attachment(`${fileName}.${extension}`);
       ctx.body = content;
       return;
     }
 
-    ctx.body = {
-      data: content,
-    };
+    const zip = new JSZip();
+
+    await Promise.all(
+      attachments.map(async (attachment) => {
+        try {
+          const location = path.join(
+            "attachments",
+            `${attachment.id}.${mime.extension(attachment.contentType)}`
+          );
+          zip.file(location, attachment.buffer, {
+            date: attachment.updatedAt,
+            createFolders: true,
+          });
+
+          content = content.replace(
+            new RegExp(escapeRegExp(attachment.redirectUrl), "g"),
+            location
+          );
+        } catch (err) {
+          Logger.error(
+            `Failed to add attachment to archive: ${attachment.id}`,
+            err
+          );
+        }
+      })
+    );
+
+    zip.file(`${fileName}.${extension}`, content, {
+      date: document.updatedAt,
+    });
+
+    ctx.set("Content-Type", "application/zip");
+    ctx.attachment(`${fileName}.zip`);
+    ctx.body = zip.generateNodeStream(ZipHelper.defaultStreamOptions);
   }
 );
 
@@ -515,9 +633,11 @@ router.post(
       document.collectionId = collectionId;
     }
 
-    const collection = await Collection.scope({
-      method: ["withMembership", user.id],
-    }).findByPk(document.collectionId);
+    const collection = document.collectionId
+      ? await Collection.scope({
+          method: ["withMembership", user.id],
+        }).findByPk(document.collectionId)
+      : undefined;
 
     // if the collectionId was provided in the request and isn't valid then it will
     // be caught as a 403 on the authorize call below. Otherwise we're checking here
@@ -530,7 +650,7 @@ router.post(
     }
 
     if (document.collection) {
-      authorize(user, "update", collection);
+      authorize(user, "updateDocument", collection);
     }
 
     if (document.deletedAt) {
@@ -599,6 +719,7 @@ router.post(
   "documents.search_titles",
   auth(),
   pagination(),
+  rateLimiter(RateLimiterStrategy.OneHundredPerMinute),
   validate(T.DocumentsSearchSchema),
   async (ctx: APIContext<T.DocumentsSearchReq>) => {
     const {
@@ -617,7 +738,7 @@ router.post(
       const collection = await Collection.scope({
         method: ["withMembership", user.id],
       }).findByPk(collectionId);
-      authorize(user, "read", collection);
+      authorize(user, "readDocument", collection);
     }
 
     if (userId) {
@@ -652,6 +773,7 @@ router.post(
     optional: true,
   }),
   pagination(),
+  rateLimiter(RateLimiterStrategy.OneHundredPerMinute),
   validate(T.DocumentsSearchSchema),
   async (ctx: APIContext<T.DocumentsSearchReq>) => {
     const {
@@ -711,7 +833,7 @@ router.post(
         const collection = await Collection.scope({
           method: ["withMembership", user.id],
         }).findByPk(collectionId);
-        authorize(user, "read", collection);
+        authorize(user, "readDocument", collection);
       }
 
       let collaboratorIds = undefined;
@@ -746,7 +868,7 @@ router.post(
     // When requesting subsequent pages of search results we don't want to record
     // duplicate search query records
     if (offset === 0) {
-      SearchQuery.create({
+      await SearchQuery.create({
         userId: user?.id,
         teamId,
         shareId,
@@ -767,6 +889,7 @@ router.post(
 router.post(
   "documents.templatize",
   auth({ member: true }),
+  rateLimiter(RateLimiterStrategy.TwentyFivePerMinute),
   validate(T.DocumentsTemplatizeSchema),
   async (ctx: APIContext<T.DocumentsTemplatizeReq>) => {
     const { id } = ctx.input.body;
@@ -786,6 +909,7 @@ router.post(
       lastModifiedById: user.id,
       createdById: user.id,
       template: true,
+      emoji: original.emoji,
       title: original.title,
       text: original.text,
     });
@@ -819,19 +943,11 @@ router.post(
   "documents.update",
   auth(),
   validate(T.DocumentsUpdateSchema),
+  transaction(),
   async (ctx: APIContext<T.DocumentsUpdateReq>) => {
-    const {
-      id,
-      title,
-      text,
-      fullWidth,
-      publish,
-      lastRevision,
-      templateId,
-      collectionId,
-      append,
-      apiVersion,
-    } = ctx.input.body;
+    const { transaction } = ctx.state;
+    const { id, apiVersion, insightsEnabled, publish, collectionId, ...input } =
+      ctx.input.body;
     const editorVersion = ctx.headers["x-editor-version"] as string | undefined;
     const { user } = ctx.state.auth;
     let collection: Collection | null | undefined;
@@ -843,41 +959,40 @@ router.post(
     collection = document?.collection;
     authorize(user, "update", document);
 
+    if (collection && insightsEnabled !== undefined) {
+      authorize(user, "updateInsights", document);
+    }
+
     if (publish) {
       if (!document.collectionId) {
         assertPresent(
           collectionId,
           "collectionId is required to publish a draft without collection"
         );
-        collection = await Collection.findByPk(collectionId as string);
+        collection = await Collection.scope({
+          method: ["withMembership", user.id],
+        }).findByPk(collectionId!);
       }
-      authorize(user, "publish", collection);
+      authorize(user, "createDocument", collection);
     }
 
-    if (lastRevision && lastRevision !== document.revisionCount) {
-      throw InvalidRequestError("Document has changed since last revision");
-    }
-
-    collection = await sequelize.transaction(async (transaction) => {
-      await documentUpdater({
-        document,
-        user,
-        title,
-        text,
-        fullWidth,
-        publish,
-        collectionId,
-        append,
-        templateId,
-        editorVersion,
-        transaction,
-        ip: ctx.request.ip,
-      });
-
-      return await Collection.scope({
-        method: ["withMembership", user.id],
-      }).findByPk(document.collectionId, { transaction });
+    await documentUpdater({
+      document,
+      user,
+      ...input,
+      publish,
+      collectionId,
+      insightsEnabled,
+      editorVersion,
+      transaction,
+      ip: ctx.request.ip,
     });
+
+    collection = document.collectionId
+      ? await Collection.scope({
+          method: ["withMembership", user.id],
+        }).findByPk(document.collectionId, { transaction })
+      : null;
 
     document.updatedBy = user;
     document.collection = collection;
@@ -901,7 +1016,9 @@ router.post(
   "documents.move",
   auth(),
   validate(T.DocumentsMoveSchema),
+  transaction(),
   async (ctx: APIContext<T.DocumentsMoveReq>) => {
+    const { transaction } = ctx.state;
     const { id, collectionId, parentDocumentId, index } = ctx.input.body;
     const { user } = ctx.state.auth;
     const document = await Document.findByPk(id, {
@@ -912,7 +1029,7 @@ router.post(
     const collection = await Collection.scope({
       method: ["withMembership", user.id],
     }).findByPk(collectionId);
-    authorize(user, "update", collection);
+    authorize(user, "updateDocument", collection);
 
     if (parentDocumentId) {
       const parent = await Document.findByPk(parentDocumentId, {
@@ -925,21 +1042,15 @@ router.post(
       }
     }
 
-    const {
-      documents,
-      collections,
-      collectionChanged,
-    } = await sequelize.transaction(async (transaction) =>
-      documentMover({
-        user,
-        document,
-        collectionId,
-        parentDocumentId,
-        index,
-        ip: ctx.request.ip,
-        transaction,
-      })
-    );
+    const { documents, collections, collectionChanged } = await documentMover({
+      user,
+      document,
+      collectionId,
+      parentDocumentId,
+      index,
+      ip: ctx.request.ip,
+      transaction,
+    });
 
     ctx.body = {
       data: {
@@ -1104,7 +1215,9 @@ router.post(
 router.post(
   "documents.import",
   auth(),
+  rateLimiter(RateLimiterStrategy.TwentyFivePerMinute),
   validate(T.DocumentsImportSchema),
+  transaction(),
   async (ctx: APIContext<T.DocumentsImportReq>) => {
     if (!ctx.is("multipart/form-data")) {
       throw InvalidRequestError("Request type must be multipart/form-data");
@@ -1125,6 +1238,7 @@ router.post(
       );
     }
 
+    const { transaction } = ctx.state;
     const { user } = ctx.state.auth;
 
     const collection = await Collection.scope({
@@ -1135,7 +1249,7 @@ router.post(
         teamId: user.teamId,
       },
     });
-    authorize(user, "publish", collection);
+    authorize(user, "createDocument", collection);
     let parentDocument;
 
     if (parentDocumentId) {
@@ -1151,27 +1265,26 @@ router.post(
     }
 
     const content = await fs.readFile(file.filepath);
-    const document = await sequelize.transaction(async (transaction) => {
-      const { text, title } = await documentImporter({
-        user,
-        fileName: file.originalFilename ?? file.newFilename,
-        mimeType: file.mimetype ?? "",
-        content,
-        ip: ctx.request.ip,
-        transaction,
-      });
+    const { text, state, title } = await documentImporter({
+      user,
+      fileName: file.originalFilename ?? file.newFilename,
+      mimeType: file.mimetype ?? "",
+      content,
+      ip: ctx.request.ip,
+      transaction,
+    });
 
-      return documentCreator({
-        source: "import",
-        title,
-        text,
-        publish,
-        collectionId,
-        parentDocumentId,
-        user,
-        ip: ctx.request.ip,
-        transaction,
-      });
+    const document = await documentCreator({
+      source: "import",
+      title,
+      text,
+      state,
+      publish,
+      collectionId,
+      parentDocumentId,
+      user,
+      ip: ctx.request.ip,
+      transaction,
     });
 
     document.collection = collection;
@@ -1186,7 +1299,9 @@ router.post(
 router.post(
   "documents.create",
   auth(),
+  rateLimiter(RateLimiterStrategy.TwentyFivePerMinute),
   validate(T.DocumentsCreateSchema),
+  transaction(),
   async (ctx: APIContext<T.DocumentsCreateReq>) => {
     const {
       title = "",
@@ -1194,11 +1309,13 @@ router.post(
       publish,
       collectionId,
       parentDocumentId,
+      fullWidth,
       templateId,
       template,
     } = ctx.input.body;
     const editorVersion = ctx.headers["x-editor-version"] as string | undefined;
 
+    const { transaction } = ctx.state;
     const { user } = ctx.state.auth;
 
     let collection;
@@ -1212,7 +1329,7 @@ router.post(
           teamId: user.teamId,
         },
       });
-      authorize(user, "publish", collection);
+      authorize(user, "createDocument", collection);
     }
 
     let parentDocument;
@@ -1238,20 +1355,19 @@ router.post(
       authorize(user, "read", templateDocument);
     }
 
-    const document = await sequelize.transaction(async (transaction) => {
-      return documentCreator({
-        title,
-        text,
-        publish,
-        collectionId,
-        parentDocumentId,
-        templateDocument,
-        template,
-        user,
-        editorVersion,
-        ip: ctx.request.ip,
-        transaction,
-      });
+    const document = await documentCreator({
+      title,
+      text,
+      publish,
+      collectionId,
+      parentDocumentId,
+      templateDocument,
+      template,
+      fullWidth,
+      user,
+      editorVersion,
+      ip: ctx.request.ip,
+      transaction,
     });
 
     document.collection = collection;

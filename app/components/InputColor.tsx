@@ -2,6 +2,8 @@ import * as React from "react";
 import { useTranslation } from "react-i18next";
 import { MenuButton, useMenuState } from "reakit/Menu";
 import styled from "styled-components";
+import { s } from "@shared/styles";
+import lazyWithRetry from "~/utils/lazyWithRetry";
 import ContextMenu from "./ContextMenu";
 import DelayedMount from "./DelayedMount";
 import Input, { Props as InputProps } from "./Input";
@@ -14,7 +16,7 @@ type Props = Omit<InputProps, "onChange"> & {
   onChange: (value: string) => void;
 };
 
-const InputColor: React.FC<Props> = ({ value, onChange, ...rest }) => {
+const InputColor: React.FC<Props> = ({ value, onChange, ...rest }: Props) => {
   const { t } = useTranslation();
   const menu = useMenuState({
     modal: true,
@@ -25,7 +27,7 @@ const InputColor: React.FC<Props> = ({ value, onChange, ...rest }) => {
     <Relative>
       <Input
         value={value}
-        onChange={(event) => onChange(event.target.value)}
+        onChange={(event) => onChange(event.target.value.replace(/^#?/, "#"))}
         placeholder="#"
         maxLength={7}
         {...rest}
@@ -60,14 +62,14 @@ const InputColor: React.FC<Props> = ({ value, onChange, ...rest }) => {
 
 const SwatchButton = styled(NudeButton)<{ $background: string | undefined }>`
   background: ${(props) => props.$background};
-  border: 1px solid ${(props) => props.theme.inputBorder};
+  border: 1px solid ${s("inputBorder")};
   border-radius: 50%;
   position: absolute;
   bottom: 20px;
   right: 6px;
 `;
 
-const ColorPicker = React.lazy(
+const ColorPicker = lazyWithRetry(
   () => import("react-color/lib/components/chrome/Chrome")
 );
 
@@ -80,7 +82,7 @@ const StyledColorPicker = styled(ColorPicker)`
 
   input {
     user-select: text;
-    color: ${(props) => props.theme.text} !important;
+    color: ${s("text")} !important;
   }
 `;
 

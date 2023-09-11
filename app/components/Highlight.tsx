@@ -1,7 +1,8 @@
-import { escapeRegExp } from "lodash";
+import escapeRegExp from "lodash/escapeRegExp";
 import * as React from "react";
 import replace from "string-replace-to-array";
 import styled from "styled-components";
+import { s } from "@shared/styles";
 
 type Props = React.HTMLAttributes<HTMLSpanElement> & {
   highlight: (string | null | undefined) | RegExp;
@@ -43,7 +44,7 @@ function Highlight({
 }
 
 export const Mark = styled.mark`
-  background: ${(props) => props.theme.searchHighlight};
+  background: ${s("searchHighlight")};
   border-radius: 2px;
   padding: 0 2px;
 `;

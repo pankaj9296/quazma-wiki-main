@@ -1,4 +1,5 @@
 import * as Sentry from "@sentry/react";
+import invariant from "invariant";
 import { NodeSelection } from "prosemirror-state";
 import { EditorView } from "prosemirror-view";
 import { v4 as uuidv4 } from "uuid";
@@ -13,12 +14,16 @@ export type Options = {
   isAttachment?: boolean;
   /** Set to true to replace any existing image at the users selection */
   replaceExisting?: boolean;
-  /** Width to use when inserting image */
-  width?: number;
   uploadFile?: (file: File) => Promise<string>;
   onFileUploadStart?: () => void;
   onFileUploadStop?: () => void;
   onShowToast: (message: string) => void;
+  attrs?: {
+    /** Width to use when inserting image */
+    width?: number;
+    /** Height to use when inserting image */
+    height?: number;
+  };
 };
 
 const insertFiles = function (
@@ -39,10 +44,10 @@ const insertFiles = function (
     onShowToast,
   } = options;
 
-  if (!uploadFile) {
-    console.warn("uploadFile callback must be defined to handle uploads.");
-    return;
-  }
+  invariant(
+    uploadFile,
+    "uploadFile callback must be defined to handle uploads."
+  );
 
   // okay, we have some dropped files and a handler – lets stop this
   // event going any further up the stack
@@ -70,6 +75,11 @@ const insertFiles = function (
     const { tr } = view.state;
 
     if (upload.isImage) {
+      // Skip if the editor does not support images.
+      if (!view.state.schema.nodes.image) {
+        continue;
+      }
+
       // insert a placeholder at this position, or mark an existing file as being
       // replaced
       tr.setMeta(uploadPlaceholderPlugin, {
@@ -83,15 +93,18 @@ const insertFiles = function (
       });
       view.dispatch(tr);
     } else if (!attachmentPlaceholdersSet) {
-      const $pos = tr.doc.resolve(pos);
+      // Skip if the editor does not support attachments.
+      if (!view.state.schema.nodes.attachment) {
+        continue;
+      }
+
       const attachmentsToUpload = filesToUpload.filter(
         (i) => i.isImage === false
       );
 
       view.dispatch(
-        view.state.tr.replaceWith(
-          $pos.pos,
-          $pos.pos + ($pos.nodeAfter?.nodeSize || 0),
+        tr.insert(
+          pos,
           attachmentsToUpload.map((attachment) =>
             schema.nodes.attachment.create({
               id: attachment.id,
@@ -126,7 +139,7 @@ const insertFiles = function (
                 .replaceWith(
                   from,
                   to || from,
-                  schema.nodes.image.create({ src, width: options.width })
+                  schema.nodes.image.create({ src, ...options.attrs })
                 )
                 .setMeta(uploadPlaceholderPlugin, { remove: { id: upload.id } })
             );
@@ -143,8 +156,8 @@ const insertFiles = function (
             }
           };
 
-          newImg.onerror = (error) => {
-            throw error;
+          newImg.onerror = () => {
+            throw new Error(`Error loading image: ${src}`);
           };
 
           newImg.src = src;

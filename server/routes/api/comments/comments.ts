@@ -1,15 +1,16 @@
 import Router from "koa-router";
-import { Transaction } from "sequelize";
 import commentCreator from "@server/commands/commentCreator";
 import commentDestroyer from "@server/commands/commentDestroyer";
 import commentUpdater from "@server/commands/commentUpdater";
 import auth from "@server/middlewares/authentication";
+import { rateLimiter } from "@server/middlewares/rateLimiter";
 import { transaction } from "@server/middlewares/transaction";
 import validate from "@server/middlewares/validate";
 import { Document, Comment } from "@server/models";
 import { authorize } from "@server/policies";
 import { presentComment, presentPolicies } from "@server/presenters";
 import { APIContext } from "@server/types";
+import { RateLimiterStrategy } from "@server/utils/RateLimiter";
 import pagination from "../middlewares/pagination";
 import * as T from "./schema";
 
@@ -17,6 +18,7 @@ const router = new Router();
 
 router.post(
   "comments.create",
+  rateLimiter(RateLimiterStrategy.TenPerMinute),
   auth(),
   validate(T.CommentsCreateSchema),
   transaction(),
@@ -29,7 +31,7 @@ router.post(
       userId: user.id,
       transaction,
     });
-    authorize(user, "read", document);
+    authorize(user, "comment", document);
 
     const comment = await commentCreator({
       id,
@@ -87,11 +89,16 @@ router.post(
 
     const comment = await Comment.findByPk(id, {
       transaction,
+      rejectOnEmpty: true,
       lock: {
         level: transaction.LOCK.UPDATE,
         of: Comment,
       },
     });
+    const document = await Document.findByPk(comment.documentId, {
+      userId: user.id,
+    });
+    authorize(user, "comment", document);
     authorize(user, "update", comment);
 
     await commentUpdater({
@@ -119,10 +126,14 @@ router.post(
     const { user } = ctx.state.auth;
     const { transaction } = ctx.state;
 
-    const comment = await Comment.unscoped().findByPk(id, {
+    const comment = await Comment.findByPk(id, {
       transaction,
-      lock: Transaction.LOCK.UPDATE,
+      rejectOnEmpty: true,
     });
+    const document = await Document.findByPk(comment.documentId, {
+      userId: user.id,
+    });
+    authorize(user, "comment", document);
     authorize(user, "delete", comment);
 
     await commentDestroyer({

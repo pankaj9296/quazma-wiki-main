@@ -1,4 +1,4 @@
-import { debounce } from "lodash";
+import debounce from "lodash/debounce";
 import { observer } from "mobx-react";
 import * as React from "react";
 import { useTranslation } from "react-i18next";
@@ -25,29 +25,18 @@ type Props = {
 function AddGroupsToCollection(props: Props) {
   const { collection } = props;
 
-  const [
-    newGroupModalOpen,
-    handleNewGroupModalOpen,
-    handleNewGroupModalClose,
-  ] = useBoolean(false);
+  const [newGroupModalOpen, handleNewGroupModalOpen, handleNewGroupModalClose] =
+    useBoolean(false);
   const [query, setQuery] = React.useState("");
 
-  const {
-    auth,
-    collectionGroupMemberships,
-    groups,
-    policies,
-    toasts,
-  } = useStores();
+  const { auth, collectionGroupMemberships, groups, policies, toasts } =
+    useStores();
   const { fetchPage: fetchGroups } = groups;
 
   const { t } = useTranslation();
 
   const debouncedFetch = React.useMemo(
-    () =>
-      debounce((query) => {
-        fetchGroups({ query });
-      }, 250),
+    () => debounce((query) => fetchGroups({ query }), 250),
     [fetchGroups]
   );
 
@@ -55,14 +44,14 @@ function AddGroupsToCollection(props: Props) {
     (ev: React.ChangeEvent<HTMLInputElement>) => {
       const updatedQuery = ev.target.value;
       setQuery(updatedQuery);
-      debouncedFetch(updatedQuery);
+      void debouncedFetch(updatedQuery);
     },
     [debouncedFetch]
   );
 
-  const handleAddGroup = (group: Group) => {
+  const handleAddGroup = async (group: Group) => {
     try {
-      collectionGroupMemberships.create({
+      await collectionGroupMemberships.create({
         collectionId: collection.id,
         groupId: group.id,
       });
@@ -78,7 +67,6 @@ function AddGroupsToCollection(props: Props) {
       toasts.showToast(t("Could not add user"), {
         type: "error",
       });
-      console.error(err);
     }
   };
 

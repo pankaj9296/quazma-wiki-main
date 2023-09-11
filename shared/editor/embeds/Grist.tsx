@@ -1,6 +1,6 @@
 import * as React from "react";
 import Frame from "../components/Frame";
-import Image from "../components/Image";
+import Image from "../components/Img";
 import { EmbedProps as Props } from ".";
 
 function Grist(props: Props) {
@@ -23,5 +23,7 @@ function Grist(props: Props) {
 }
 
 Grist.ENABLED = [new RegExp("^https?://([a-z.-]+\\.)?getgrist\\.com/(.+)$")];
+
+Grist.URL_PATH_REGEX = /(.+)/;
 
 export default Grist;

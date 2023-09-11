@@ -19,16 +19,18 @@ function UserDelete() {
   const { auth } = useStores();
   const { showToast } = useToasts();
   const { t } = useTranslation();
-  const { register, handleSubmit: formHandleSubmit, formState } = useForm<
-    FormData
-  >();
+  const {
+    register,
+    handleSubmit: formHandleSubmit,
+    formState,
+  } = useForm<FormData>();
 
   const handleRequestDelete = React.useCallback(
     async (ev: React.SyntheticEvent) => {
       ev.preventDefault();
 
       try {
-        await auth.requestDelete();
+        await auth.requestDeleteUser();
         setWaitingCode(true);
       } catch (error) {
         showToast(error.message, {
@@ -43,7 +45,7 @@ function UserDelete() {
     async (data: FormData) => {
       try {
         await auth.deleteUser(data);
-        auth.logout();
+        await auth.logout();
       } catch (error) {
         showToast(error.message, {
           type: "error",
@@ -69,16 +71,8 @@ function UserDelete() {
                 enter the code below to permanantly destroy your account.
               </Trans>
             </Text>
-            <Text type="secondary">
-              <Trans
-                defaults="<em>Note:</em> Signing back in will cause a new account to be automatically reprovisioned."
-                components={{
-                  em: <strong />,
-                }}
-              />
-            </Text>
             <Input
-              placeholder="CODE"
+              placeholder={t("Confirmation code")}
               autoComplete="off"
               autoFocus
               maxLength={8}
@@ -103,10 +97,14 @@ function UserDelete() {
             {t("Continue")}…
           </Button>
         ) : (
-          <Button type="submit" disabled={formState.isSubmitting} danger>
+          <Button
+            type="submit"
+            disabled={formState.isSubmitting || !formState.isValid}
+            danger
+          >
             {formState.isSubmitting
               ? `${t("Deleting")}…`
-              : t("Delete My Account")}
+              : t("Delete my account")}
           </Button>
         )}
       </form>

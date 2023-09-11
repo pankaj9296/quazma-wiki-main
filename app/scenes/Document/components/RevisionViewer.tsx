@@ -3,16 +3,19 @@ import * as React from "react";
 import EditorContainer from "@shared/editor/components/Styles";
 import Document from "~/models/Document";
 import Revision from "~/models/Revision";
-import DocumentMeta from "~/components/DocumentMeta";
 import { Props as EditorProps } from "~/components/Editor";
 import Flex from "~/components/Flex";
-import { documentUrl } from "~/utils/routeHelpers";
+import { documentPath } from "~/utils/routeHelpers";
+import { Meta as DocumentMeta } from "./DocumentMeta";
+import DocumentTitle from "./DocumentTitle";
 
 type Props = Omit<EditorProps, "extensions"> & {
+  /** The ID of the revision */
   id: string;
+  /** The current document */
   document: Document;
+  /** The revision to display */
   revision: Revision;
-  isDraft: boolean;
   children?: React.ReactNode;
 };
 
@@ -20,14 +23,22 @@ type Props = Omit<EditorProps, "extensions"> & {
  * Displays revision HTML pre-rendered on the server.
  */
 function RevisionViewer(props: Props) {
-  const { document, shareId, children, revision } = props;
+  const { document, children, revision } = props;
 
   return (
     <Flex auto column>
-      <h1 dir={revision.dir}>{revision.title}</h1>
-      {!shareId && (
-        <DocumentMeta document={document} to={documentUrl(document)} />
-      )}
+      <DocumentTitle
+        documentId={revision.documentId}
+        title={revision.title}
+        emoji={revision.emoji}
+        readOnly
+      />
+      <DocumentMeta
+        document={document}
+        revision={revision}
+        to={documentPath(document)}
+        rtl={revision.rtl}
+      />
       <EditorContainer
         dangerouslySetInnerHTML={{ __html: revision.html }}
         dir={revision.dir}

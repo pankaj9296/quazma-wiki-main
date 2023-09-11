@@ -7,20 +7,28 @@ import { Link, useRouteMatch } from "react-router-dom";
 import styled from "styled-components";
 import { TeamPreference } from "@shared/types";
 import Document from "~/models/Document";
+import Revision from "~/models/Revision";
 import DocumentMeta from "~/components/DocumentMeta";
 import Fade from "~/components/Fade";
 import useStores from "~/hooks/useStores";
-import { documentUrl, documentInsightsUrl } from "~/utils/routeHelpers";
+import { documentPath, documentInsightsPath } from "~/utils/routeHelpers";
 
 type Props = {
   /* The document to display meta data for */
   document: Document;
+  revision?: Revision;
   isDraft: boolean;
   to?: LocationDescriptor;
   rtl?: boolean;
 };
 
-function TitleDocumentMeta({ to, isDraft, document, ...rest }: Props) {
+function TitleDocumentMeta({
+  to,
+  isDraft,
+  document,
+  revision,
+  ...rest
+}: Props) {
   const { auth, views, comments, ui } = useStores();
   const { t } = useTranslation();
   const { team } = auth;
@@ -32,16 +40,32 @@ function TitleDocumentMeta({ to, isDraft, document, ...rest }: Props) {
 
   const Wrapper = viewsLoadedOnMount.current ? React.Fragment : Fade;
 
-  const insightsUrl = documentInsightsUrl(document);
+  const insightsPath = documentInsightsPath(document);
   const commentsCount = comments.inDocument(document.id).length;
 
   return (
-    <Meta document={document} to={to} replace {...rest}>
+    <Meta document={document} revision={revision} to={to} replace {...rest}>
+      {team?.getPreference(TeamPreference.Commenting) && (
+        <>
+          &nbsp;•&nbsp;
+          <CommentLink
+            to={documentPath(document)}
+            onClick={() => ui.toggleComments(document.id)}
+          >
+            <CommentIcon size={18} />
+            {commentsCount
+              ? t("{{ count }} comment", { count: commentsCount })
+              : t("Comment")}
+          </CommentLink>
+        </>
+      )}
       {totalViewers && !isDraft ? (
         <Wrapper>
           &nbsp;•&nbsp;
           <Link
-            to={match.url === insightsUrl ? documentUrl(document) : insightsUrl}
+            to={
+              match.url === insightsPath ? documentPath(document) : insightsPath
+            }
           >
             {t("Viewed by")}{" "}
             {onlyYou
@@ -52,17 +76,6 @@ function TitleDocumentMeta({ to, isDraft, document, ...rest }: Props) {
           </Link>
         </Wrapper>
       ) : null}
-      {team?.getPreference(TeamPreference.Commenting) && (
-        <>
-          &nbsp;•&nbsp;
-          <CommentLink to={documentUrl(document)} onClick={ui.toggleComments}>
-            <CommentIcon color="currentColor" size={18} />
-            {commentsCount
-              ? t("{{ count }} comment", { count: commentsCount })
-              : t("Comment")}
-          </CommentLink>
-        </>
-      )}
     </Meta>
   );
 }
@@ -72,7 +85,7 @@ const CommentLink = styled(Link)`
   align-items: center;
 `;
 
-const Meta = styled(DocumentMeta)<{ rtl?: boolean }>`
+export const Meta = styled(DocumentMeta)<{ rtl?: boolean }>`
   justify-content: ${(props) => (props.rtl ? "flex-end" : "flex-start")};
   margin: -12px 0 2em 0;
   font-size: 14px;
@@ -82,6 +95,7 @@ const Meta = styled(DocumentMeta)<{ rtl?: boolean }>`
 
   a {
     color: inherit;
+    cursor: var(--pointer);
 
     &:hover {
       text-decoration: underline;

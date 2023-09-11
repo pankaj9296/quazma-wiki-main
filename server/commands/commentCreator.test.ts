@@ -1,9 +1,6 @@
 import { Event } from "@server/models";
 import { buildDocument, buildUser } from "@server/test/factories";
-import { setupTestDatabase } from "@server/test/support";
 import commentCreator from "./commentCreator";
-
-setupTestDatabase();
 
 describe("commentCreator", () => {
   const ip = "127.0.0.1";
@@ -17,12 +14,27 @@ describe("commentCreator", () => {
 
     const comment = await commentCreator({
       documentId: document.id,
-      data: { text: "test" },
+      data: {
+        type: "doc",
+        content: [
+          {
+            type: "paragraph",
+            content: [
+              {
+                type: "text",
+                text: "test",
+              },
+            ],
+          },
+        ],
+      },
       user,
       ip,
     });
 
-    const event = await Event.findOne();
+    const event = await Event.findLatest({
+      teamId: user.teamId,
+    });
     expect(comment.documentId).toEqual(document.id);
     expect(comment.createdById).toEqual(user.id);
     expect(event!.name).toEqual("comments.create");

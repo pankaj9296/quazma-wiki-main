@@ -10,6 +10,7 @@ import Scrollable from "~/components/Scrollable";
 import useCurrentUser from "~/hooks/useCurrentUser";
 import useFocusedComment from "~/hooks/useFocusedComment";
 import useKeyDown from "~/hooks/useKeyDown";
+import usePolicy from "~/hooks/usePolicy";
 import useStores from "~/hooks/useStores";
 import CommentForm from "./CommentForm";
 import CommentThread from "./CommentThread";
@@ -22,8 +23,9 @@ function Comments() {
   const match = useRouteMatch<{ documentSlug: string }>();
   const document = documents.getByUrl(match.params.documentSlug);
   const focusedComment = useFocusedComment();
+  const can = usePolicy(document?.id);
 
-  useKeyDown("Escape", ui.collapseComments);
+  useKeyDown("Escape", () => document && ui.collapseComments(document?.id));
 
   if (!document) {
     return null;
@@ -37,10 +39,15 @@ function Comments() {
   return (
     <Sidebar
       title={t("Comments")}
-      onClose={ui.collapseComments}
+      onClose={() => ui.collapseComments(document?.id)}
       scrollable={false}
     >
-      <Scrollable bottomShadow={!focusedComment} hiddenScrollbars topShadow>
+      <Scrollable
+        bottomShadow={!focusedComment}
+        id="comments"
+        hiddenScrollbars
+        topShadow
+      >
         <Wrapper $hasComments={hasComments}>
           {hasComments ? (
             threads.map((thread) => (
@@ -54,13 +61,13 @@ function Comments() {
             ))
           ) : (
             <NoComments align="center" justify="center" auto>
-              <Empty>{t("No comments yet")}</Empty>
+              <PositionedEmpty>{t("No comments yet")}</PositionedEmpty>
             </NoComments>
           )}
         </Wrapper>
       </Scrollable>
       <AnimatePresence initial={false}>
-        {!focusedComment && (
+        {!focusedComment && can.comment && (
           <NewCommentForm
             documentId={document.id}
             placeholder={`${t("Add a comment")}…`}
@@ -74,6 +81,12 @@ function Comments() {
     </Sidebar>
   );
 }
+
+const PositionedEmpty = styled(Empty)`
+  position: absolute;
+  top: calc(50vh - 30px);
+  transform: translateY(-50%);
+`;
 
 const NoComments = styled(Flex)`
   padding-bottom: 65px;

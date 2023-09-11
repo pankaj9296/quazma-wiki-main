@@ -1,18 +1,22 @@
-import { find } from "lodash";
+import find from "lodash/find";
 import { observer } from "mobx-react";
-import { BackIcon, EmailIcon } from "outline-icons";
+import { EmailIcon } from "outline-icons";
 import * as React from "react";
 import { Trans, useTranslation } from "react-i18next";
 import { useLocation, Link, Redirect } from "react-router-dom";
 import styled from "styled-components";
 import { getCookie, setCookie } from "tiny-cookie";
+import { s } from "@shared/styles";
+import { UserPreference } from "@shared/types";
 import { parseDomain } from "@shared/utils/domains";
 import { Config } from "~/stores/AuthStore";
 import ButtonLarge from "~/components/ButtonLarge";
+import ChangeLanguage from "~/components/ChangeLanguage";
 import Fade from "~/components/Fade";
 import Flex from "~/components/Flex";
 import Heading from "~/components/Heading";
 import OutlineIcon from "~/components/Icons/OutlineIcon";
+import Input from "~/components/Input";
 import LoadingIndicator from "~/components/LoadingIndicator";
 import PageTitle from "~/components/PageTitle";
 import TeamLogo from "~/components/TeamLogo";
@@ -24,28 +28,10 @@ import useStores from "~/hooks/useStores";
 import { draggableOnDesktop } from "~/styles";
 import Desktop from "~/utils/Desktop";
 import isCloudHosted from "~/utils/isCloudHosted";
-import { changeLanguage, detectLanguage } from "~/utils/language";
-import AuthenticationProvider from "./AuthenticationProvider";
-import Notices from "./Notices";
-
-function Header({ config }: { config?: Config | undefined }) {
-  const { t } = useTranslation();
-  const isSubdomain = !!config?.hostname;
-
-  if (
-    !isCloudHosted ||
-    parseDomain(window.location.origin).custom ||
-    Desktop.isElectron()
-  ) {
-    return null;
-  }
-
-  return (
-    <Back href={isSubdomain ? env.URL : "https://www.getoutline.com"}>
-      <BackIcon color="currentColor" /> {t("Back to home")}
-    </Back>
-  );
-}
+import { detectLanguage } from "~/utils/language";
+import AuthenticationProvider from "./components/AuthenticationProvider";
+import BackButton from "./components/BackButton";
+import Notices from "./components/Notices";
 
 type Props = {
   children?: (config?: Config) => React.ReactNode;
@@ -54,13 +40,17 @@ type Props = {
 function Login({ children }: Props) {
   const location = useLocation();
   const query = useQuery();
-  const { t, i18n } = useTranslation();
+  const notice = query.get("notice");
+
+  const { t } = useTranslation();
   const { auth } = useStores();
   const { config } = auth;
   const [error, setError] = React.useState(null);
   const [emailLinkSentTo, setEmailLinkSentTo] = React.useState("");
   const isCreate = location.pathname === "/create";
-  const rememberLastPath = !!auth.user?.preferences?.rememberLastPath;
+  const rememberLastPath = !!auth.user?.getPreference(
+    UserPreference.RememberLastPath
+  );
   const [lastVisitedPath] = useLastVisitedPath();
 
   const handleReset = React.useCallback(() => {
@@ -70,16 +60,25 @@ function Login({ children }: Props) {
     setEmailLinkSentTo(email);
   }, []);
 
+  const handleGoSubdomain = React.useCallback(async (event) => {
+    event.preventDefault();
+    const data = Object.fromEntries(new FormData(event.target));
+    const normalizedSubdomain = data.subdomain
+      .toString()
+      .toLowerCase()
+      .trim()
+      .replace(/^https?:\/\//, "");
+    const host = `https://${normalizedSubdomain}.getoutline.com`;
+    await Desktop.bridge.addCustomHost(host);
+
+    setTimeout(() => {
+      window.location.href = host;
+    }, 500);
+  }, []);
+
   React.useEffect(() => {
     auth.fetchConfig().catch(setError);
   }, [auth]);
-
-  // TODO: Persist detected language to new user
-  // Try to detect the user's language and show the login page on its idiom
-  // if translation is available
-  React.useEffect(() => {
-    changeLanguage(detectLanguage(), i18n);
-  }, [i18n]);
 
   React.useEffect(() => {
     const entries = Object.fromEntries(query.entries());
@@ -111,7 +110,8 @@ function Login({ children }: Props) {
   if (error) {
     return (
       <Background>
-        <Header />
+        <BackButton />
+        <ChangeLanguage locale={detectLanguage()} />
         <Centered align="center" justify="center" column auto>
           <PageTitle title={t("Login")} />
           <Heading centered>{t("Error")}</Heading>
@@ -142,7 +142,8 @@ function Login({ children }: Props) {
   if (isCloudHosted && isCustomDomain && !config.name) {
     return (
       <Background>
-        <Header config={config} />
+        <BackButton config={config} />
+        <ChangeLanguage locale={detectLanguage()} />
         <Centered align="center" justify="center" column auto>
           <PageTitle title={t("Custom domain setup")} />
           <Heading centered>{t("Almost there")}…</Heading>
@@ -151,6 +152,44 @@ function Login({ children }: Props) {
               "Your custom domain is successfully pointing at Outline. To complete the setup process please contact support."
             )}
           </Note>
+        </Centered>
+      </Background>
+    );
+  }
+
+  if (Desktop.isElectron() && notice === "domain-required") {
+    return (
+      <Background>
+        <BackButton config={config} />
+        <ChangeLanguage locale={detectLanguage()} />
+
+        <Centered
+          as="form"
+          onSubmit={handleGoSubdomain}
+          align="center"
+          justify="center"
+          column
+          auto
+        >
+          <Heading centered>{t("Choose workspace")}</Heading>
+          <Note>
+            {t(
+              "This login method requires choosing your workspace to continue"
+            )}
+            …
+          </Note>
+          <Flex>
+            <Input
+              name="subdomain"
+              style={{ textAlign: "right" }}
+              placeholder={t("subdomain")}
+            >
+              <Domain>.getoutline.com</Domain>
+            </Input>
+          </Flex>
+          <ButtonLarge type="submit" fullwidth>
+            {t("Continue")}
+          </ButtonLarge>
         </Centered>
       </Background>
     );
@@ -165,10 +204,10 @@ function Login({ children }: Props) {
   if (emailLinkSentTo) {
     return (
       <Background>
-        <Header config={config} />
+        <BackButton config={config} />
         <Centered align="center" justify="center" column auto>
           <PageTitle title={t("Check your email")} />
-          <CheckEmailIcon size={38} color="currentColor" />
+          <CheckEmailIcon size={38} />
           <Heading centered>{t("Check your email")}</Heading>
           <Note>
             <Trans
@@ -188,7 +227,9 @@ function Login({ children }: Props) {
 
   return (
     <Background>
-      <Header config={config} />
+      <BackButton config={config} />
+      <ChangeLanguage locale={detectLanguage()} />
+
       <Centered align="center" justify="center" gap={12} column auto>
         <PageTitle
           title={config.name ? `${config.name} – ${t("Login")}` : t("Login")}
@@ -271,6 +312,11 @@ const StyledHeading = styled(Heading)`
   margin: 0;
 `;
 
+const Domain = styled.div`
+  color: ${s("textSecondary")};
+  padding: 0 8px 0 0;
+`;
+
 const CheckEmailIcon = styled(EmailIcon)`
   margin-bottom: -1.5em;
 `;
@@ -278,7 +324,7 @@ const CheckEmailIcon = styled(EmailIcon)`
 const Background = styled(Fade)`
   width: 100vw;
   height: 100%;
-  background: ${(props) => props.theme.background};
+  background: ${s("background")};
   display: flex;
   ${draggableOnDesktop()}
 `;
@@ -288,13 +334,13 @@ const Logo = styled.div`
 `;
 
 const Content = styled(Text)`
-  color: ${(props) => props.theme.textSecondary};
+  color: ${s("textSecondary")};
   text-align: center;
   margin-top: -8px;
 `;
 
 const Note = styled(Text)`
-  color: ${(props) => props.theme.textTertiary};
+  color: ${s("textTertiary")};
   text-align: center;
   font-size: 14px;
   margin-top: 8px;
@@ -302,25 +348,6 @@ const Note = styled(Text)`
   em {
     font-style: normal;
     font-weight: 500;
-  }
-`;
-
-const Back = styled.a`
-  display: flex;
-  align-items: center;
-  color: inherit;
-  padding: 32px;
-  font-weight: 500;
-  position: absolute;
-
-  svg {
-    transition: transform 100ms ease-in-out;
-  }
-
-  &:hover {
-    svg {
-      transform: translateX(-4px);
-    }
   }
 `;
 
@@ -337,8 +364,8 @@ const Or = styled.hr`
     transform: translate3d(-50%, -50%, 0);
     text-transform: uppercase;
     font-size: 11px;
-    color: ${(props) => props.theme.textSecondary};
-    background: ${(props) => props.theme.background};
+    color: ${s("textSecondary")};
+    background: ${s("background")};
     border-radius: 2px;
     padding: 0 4px;
   }

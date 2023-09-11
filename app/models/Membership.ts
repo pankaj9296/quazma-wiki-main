@@ -1,20 +1,16 @@
-import { computed } from "mobx";
+import { observable } from "mobx";
 import { CollectionPermission } from "@shared/types";
-import BaseModel from "./BaseModel";
+import Model from "./base/Model";
 
-class Membership extends BaseModel {
+class Membership extends Model {
   id: string;
 
   userId: string;
 
   collectionId: string;
 
+  @observable
   permission: CollectionPermission;
-
-  @computed
-  get isEditor(): boolean {
-    return this.permission === CollectionPermission.ReadWrite;
-  }
 }
 
 export default Membership;

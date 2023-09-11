@@ -1,14 +1,13 @@
 import { observer } from "mobx-react";
-import { PlusIcon } from "outline-icons";
 import * as React from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import { CompositeStateReturn, CompositeItem } from "reakit/Composite";
 import styled, { css } from "styled-components";
 import breakpoint from "styled-components-breakpoint";
+import { s } from "@shared/styles";
 import Document from "~/models/Document";
 import Badge from "~/components/Badge";
-import Button from "~/components/Button";
 import DocumentMeta from "~/components/DocumentMeta";
 import EventBoundary from "~/components/EventBoundary";
 import Flex from "~/components/Flex";
@@ -17,12 +16,11 @@ import NudeButton from "~/components/NudeButton";
 import StarButton, { AnimatedStar } from "~/components/Star";
 import Tooltip from "~/components/Tooltip";
 import useBoolean from "~/hooks/useBoolean";
-import useCurrentTeam from "~/hooks/useCurrentTeam";
 import useCurrentUser from "~/hooks/useCurrentUser";
-import usePolicy from "~/hooks/usePolicy";
 import DocumentMenu from "~/menus/DocumentMenu";
 import { hover } from "~/styles";
-import { newDocumentPath } from "~/utils/routeHelpers";
+import { documentPath } from "~/utils/routeHelpers";
+import EmojiIcon from "./Icons/EmojiIcon";
 
 type Props = {
   document: Document;
@@ -50,7 +48,6 @@ function DocumentListItem(
 ) {
   const { t } = useTranslation();
   const user = useCurrentUser();
-  const team = useCurrentTeam();
   const [menuOpen, handleMenuOpen, handleMenuClose] = useBoolean();
 
   const {
@@ -70,8 +67,6 @@ function DocumentListItem(
     !!document.title.toLowerCase().includes(highlight.toLowerCase());
   const canStar =
     !document.isDraft && !document.isArchived && !document.isTemplate;
-  const can = usePolicy(team);
-  const canCollection = usePolicy(document.collectionId);
 
   return (
     <CompositeItem
@@ -82,7 +77,7 @@ function DocumentListItem(
       $isStarred={document.isStarred}
       $menuOpen={menuOpen}
       to={{
-        pathname: document.url,
+        pathname: documentPath(document),
         state: {
           title: document.titleWithDefault,
         },
@@ -91,6 +86,12 @@ function DocumentListItem(
     >
       <Content>
         <Heading dir={document.dir}>
+          {document.emoji && (
+            <>
+              <EmojiIcon emoji={document.emoji} size={24} />
+              &nbsp;
+            </>
+          )}
           <Title
             text={document.titleWithDefault}
             highlight={highlight}
@@ -134,25 +135,6 @@ function DocumentListItem(
         />
       </Content>
       <Actions>
-        {document.isTemplate &&
-          !document.isArchived &&
-          !document.isDeleted &&
-          can.createDocument &&
-          canCollection.update && (
-            <>
-              <Button
-                as={Link}
-                to={newDocumentPath(document.collectionId, {
-                  templateId: document.id,
-                })}
-                icon={<PlusIcon />}
-                neutral
-              >
-                {t("New doc")}
-              </Button>
-              &nbsp;
-            </>
-          )}
         <DocumentMenu
           document={document}
           showPin={showPin}
@@ -177,11 +159,11 @@ const Actions = styled(EventBoundary)`
   margin: 8px;
   flex-shrink: 0;
   flex-grow: 0;
+  color: ${s("textSecondary")};
 
   ${NudeButton} {
-    &:hover,
-    &[aria-expanded="true"] {
-      background: ${(props) => props.theme.sidebarControlHoverBackground};
+    &: ${hover}, &[aria-expanded= "true"] {
+      background: ${s("sidebarControlHoverBackground")};
     }
   }
 
@@ -223,7 +205,7 @@ const DocumentLink = styled(Link)<{
   &:active,
   &:focus,
   &:focus-within {
-    background: ${(props) => props.theme.listItemHoverBackground};
+    background: ${s("listItemHoverBackground")};
 
     ${Actions} {
       opacity: 1;
@@ -232,7 +214,7 @@ const DocumentLink = styled(Link)<{
     ${AnimatedStar} {
       opacity: 0.5;
 
-      &:hover {
+      &:${hover} {
         opacity: 1;
       }
     }
@@ -241,7 +223,7 @@ const DocumentLink = styled(Link)<{
   ${(props) =>
     props.$menuOpen &&
     css`
-      background: ${(props) => props.theme.listItemHoverBackground};
+      background: ${s("listItemHoverBackground")};
 
       ${Actions} {
         opacity: 1;
@@ -257,14 +239,12 @@ const Heading = styled.h3<{ rtl?: boolean }>`
   display: flex;
   justify-content: ${(props) => (props.rtl ? "flex-end" : "flex-start")};
   align-items: center;
-  height: 24px;
   margin-top: 0;
   margin-bottom: 0.25em;
-  overflow: hidden;
   white-space: nowrap;
-  color: ${(props) => props.theme.text};
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen,
-    Ubuntu, Cantarell, "Open Sans", "Helvetica Neue", sans-serif;
+  color: ${s("text")};
+  font-family: ${s("fontFamily")};
+  font-weight: 500;
 `;
 
 const StarPositioner = styled(Flex)`
@@ -280,7 +260,7 @@ const Title = styled(Highlight)`
 
 const ResultContext = styled(Highlight)`
   display: block;
-  color: ${(props) => props.theme.textTertiary};
+  color: ${s("textTertiary")};
   font-size: 14px;
   margin-top: -0.25em;
   margin-bottom: 0.25em;

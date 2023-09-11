@@ -1,6 +1,7 @@
 import * as React from "react";
 import { useMenuState, MenuButton } from "reakit/Menu";
 import styled from "styled-components";
+import { s } from "@shared/styles";
 import Button, { Inner } from "~/components/Button";
 import ContextMenu from "~/components/ContextMenu";
 import MenuItem from "~/components/ContextMenu/MenuItem";
@@ -79,8 +80,8 @@ const Note = styled(Text)`
   margin-bottom: 0;
   line-height: 1.2em;
   font-size: 14px;
-  font-weight: 400;
-  color: ${(props) => props.theme.textTertiary};
+  font-weight: 500;
+  color: ${s("textTertiary")};
 `;
 
 const LabelWithNote = styled.div`

@@ -1,4 +1,4 @@
-import { find } from "lodash";
+import find from "lodash/find";
 import { observer } from "mobx-react";
 import * as React from "react";
 import { useForm } from "react-hook-form";
@@ -42,7 +42,7 @@ function GoogleAnalytics() {
   });
 
   React.useEffect(() => {
-    integrations.fetchPage({
+    void integrations.fetchPage({
       type: IntegrationType.Analytics,
     });
   }, [integrations]);
@@ -80,10 +80,7 @@ function GoogleAnalytics() {
   );
 
   return (
-    <Scene
-      title={t("Google Analytics")}
-      icon={<GoogleIcon color="currentColor" />}
-    >
+    <Scene title={t("Google Analytics")} icon={<GoogleIcon />}>
       <Heading>{t("Google Analytics")}</Heading>
 
       <Text type="secondary">

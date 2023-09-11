@@ -1,6 +1,6 @@
 import path from "path";
 import emojiRegex from "emoji-regex";
-import { truncate } from "lodash";
+import truncate from "lodash/truncate";
 import mammoth from "mammoth";
 import quotedPrintable from "quoted-printable";
 import { Transaction } from "sequelize";
@@ -9,11 +9,10 @@ import parseTitle from "@shared/utils/parseTitle";
 import { DocumentValidation } from "@shared/validations";
 import { traceFunction } from "@server/logging/tracing";
 import { User } from "@server/models";
-import dataURItoBuffer from "@server/utils/dataURItoBuffer";
-import parseImages from "@server/utils/parseImages";
+import DocumentHelper from "@server/models/helpers/DocumentHelper";
+import ProsemirrorHelper from "@server/models/helpers/ProsemirrorHelper";
 import turndownService from "@server/utils/turndown";
 import { FileImportError, InvalidRequestError } from "../errors";
-import attachmentCreator from "./attachmentCreator";
 
 interface ImportableFile {
   type: string;
@@ -30,8 +29,7 @@ const importMapping: ImportableFile[] = [
     getMarkdown: docxToMarkdown,
   },
   {
-    type:
-      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     getMarkdown: docxToMarkdown,
   },
   {
@@ -57,7 +55,10 @@ async function fileToMarkdown(content: Buffer | string): Promise<string> {
 
 async function docxToMarkdown(content: Buffer | string): Promise<string> {
   if (content instanceof Buffer) {
-    const { value: html } = await mammoth.convertToHtml({ buffer: content });
+    const { value: html } = await mammoth.convertToHtml({
+      buffer: content,
+    });
+
     return turndownService.turndown(html);
   }
 
@@ -147,6 +148,7 @@ async function documentImporter({
 }): Promise<{
   text: string;
   title: string;
+  state: Buffer;
 }> {
   const fileInfo = importMapping.filter((item) => {
     if (item.type === mimeType) {
@@ -202,33 +204,28 @@ async function documentImporter({
   // to match our hardbreak parser.
   text = text.replace(/<br>/gi, "\\n");
 
-  // Escape any dollar signs in the text to prevent them being interpreted as
-  // math blocks
-  text = text.replace(/\$/g, "\\$");
-
-  // find data urls, convert to blobs, upload and write attachments
-  const images = parseImages(text);
-  const dataURIs = images.filter((href) => href.startsWith("data:"));
-
-  for (const uri of dataURIs) {
-    const name = "imported";
-    const { buffer, type } = dataURItoBuffer(uri);
-    const attachment = await attachmentCreator({
-      name,
-      type,
-      buffer,
-      user,
-      ip,
-      transaction,
-    });
-    text = text.replace(uri, attachment.redirectUrl);
-  }
+  text = await DocumentHelper.replaceImagesWithAttachments(
+    text,
+    user,
+    ip,
+    transaction
+  );
 
   // It's better to truncate particularly long titles than fail the import
   title = truncate(title, { length: DocumentValidation.maxTitleLength });
 
+  const ydoc = ProsemirrorHelper.toYDoc(text);
+  const state = ProsemirrorHelper.toState(ydoc);
+
+  if (state.length > DocumentValidation.maxStateLength) {
+    throw InvalidRequestError(
+      `The document "${title}" is too large to import, please reduce the length and try again`
+    );
+  }
+
   return {
     text,
+    state,
     title,
   };
 }

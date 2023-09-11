@@ -18,22 +18,22 @@ function Features() {
   const { t } = useTranslation();
   const { showToast } = useToasts();
 
-  const handlePreferenceChange = async (
-    ev: React.ChangeEvent<HTMLInputElement>
-  ) => {
-    const preferences = {
-      ...team.preferences,
-      [ev.target.name]: ev.target.checked,
+  const handlePreferenceChange =
+    (inverted = false) =>
+    async (ev: React.ChangeEvent<HTMLInputElement>) => {
+      const preferences = {
+        ...team.preferences,
+        [ev.target.name]: inverted ? !ev.target.checked : ev.target.checked,
+      };
+
+      await auth.updateTeam({ preferences });
+      showToast(t("Settings saved"), {
+        type: "success",
+      });
     };
 
-    await auth.updateTeam({ preferences });
-    showToast(t("Settings saved"), {
-      type: "success",
-    });
-  };
-
   return (
-    <Scene title={t("Features")} icon={<BeakerIcon color="currentColor" />}>
+    <Scene title={t("Features")} icon={<BeakerIcon />}>
       <Heading>{t("Features")}</Heading>
       <Text type="secondary">
         <Trans>
@@ -41,29 +41,23 @@ function Features() {
           the experience for all members of the workspace.
         </Trans>
       </Text>
-      {team.collaborativeEditing && (
-        <SettingRow
+      <SettingRow
+        name={TeamPreference.SeamlessEdit}
+        label={t("Separate editing")}
+        description={t(
+          `When enabled documents have a separate editing mode by default instead of being always editable. This setting can be overridden by user preferences.`
+        )}
+      >
+        <Switch
+          id={TeamPreference.SeamlessEdit}
           name={TeamPreference.SeamlessEdit}
-          label={t("Seamless editing")}
-          description={t(
-            `When enabled documents are always editable for team members that have permission. When disabled there is a separate editing view.`
-          )}
-        >
-          <Switch
-            id={TeamPreference.SeamlessEdit}
-            name={TeamPreference.SeamlessEdit}
-            checked={team.getPreference(TeamPreference.SeamlessEdit, true)}
-            onChange={handlePreferenceChange}
-          />
-        </SettingRow>
-      )}
-      {/* <SettingRow
+          checked={!team.getPreference(TeamPreference.SeamlessEdit)}
+          onChange={handlePreferenceChange(true)}
+        />
+      </SettingRow>
+      <SettingRow
         name={TeamPreference.Commenting}
-        label={
-          <Flex align="center">
-            {t("Commenting")} <Badge>Beta</Badge>
-          </Flex>
-        }
+        label={t("Commenting")}
         description={t(
           "When enabled team members can add comments to documents."
         )}
@@ -71,27 +65,10 @@ function Features() {
         <Switch
           id={TeamPreference.Commenting}
           name={TeamPreference.Commenting}
-          checked={team.getPreference(TeamPreference.Commenting, false)}
-          disabled={!team.collaborativeEditing}
-          onChange={handlePreferenceChange}
+          checked={team.getPreference(TeamPreference.Commenting)}
+          onChange={handlePreferenceChange(false)}
         />
-      </SettingRow> */}
-      {team.avatarUrl && (
-        <SettingRow
-          name={TeamPreference.PublicBranding}
-          label={t("Public branding")}
-          description={t(
-            "Show your team’s logo on public pages like login and shared documents."
-          )}
-        >
-          <Switch
-            id={TeamPreference.PublicBranding}
-            name={TeamPreference.PublicBranding}
-            checked={team.getPreference(TeamPreference.PublicBranding, false)}
-            onChange={handlePreferenceChange}
-          />
-        </SettingRow>
-      )}
+      </SettingRow>
     </Scene>
   );
 }

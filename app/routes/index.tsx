@@ -4,15 +4,19 @@ import DesktopRedirect from "~/scenes/DesktopRedirect";
 import DelayedMount from "~/components/DelayedMount";
 import FullscreenLoading from "~/components/FullscreenLoading";
 import Route from "~/components/ProfiledRoute";
+import useQueryNotices from "~/hooks/useQueryNotices";
+import lazyWithRetry from "~/utils/lazyWithRetry";
 import { matchDocumentSlug as slug } from "~/utils/routeHelpers";
 
-const Authenticated = React.lazy(() => import("~/components/Authenticated"));
-const AuthenticatedRoutes = React.lazy(() => import("./authenticated"));
-const SharedDocument = React.lazy(() => import("~/scenes/Document/Shared"));
-const Login = React.lazy(() => import("~/scenes/Login"));
-const Logout = React.lazy(() => import("~/scenes/Logout"));
+const Authenticated = lazyWithRetry(() => import("~/components/Authenticated"));
+const AuthenticatedRoutes = lazyWithRetry(() => import("./authenticated"));
+const SharedDocument = lazyWithRetry(() => import("~/scenes/Document/Shared"));
+const Login = lazyWithRetry(() => import("~/scenes/Login"));
+const Logout = lazyWithRetry(() => import("~/scenes/Logout"));
 
 export default function Routes() {
+  useQueryNotices();
+
   return (
     <React.Suspense
       fallback={
