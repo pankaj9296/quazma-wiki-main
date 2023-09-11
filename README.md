@@ -1,11 +1,7 @@
 ##HOW To Update:
 
-yarn install --frozen-lockfile && yarn build
 
-yarn sequelize db:migrate
-
-pm2 restart WIKI
-
+OR Check https://github.com/pankaj9296/quazma-wiki-main/blob/main/notes.md
 
 
 <p align="center">
